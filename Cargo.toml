@@ -4,10 +4,10 @@ version = "1.0.0"
 edition = "2021"
 description = "A unified, multi-tier linguistic compliance engine designed to process textual diagnostics with ultra-low latency on Android."
 
-# ◄— ADD THIS BLOCK TO FORCE SHARED LIBRARY COMPILATION (.so)
 [lib]
 name = "lexiq_compliance"
 crate-type = ["cdylib"]
+path = "src/main.rs" # ◄— Explicitly tells Cargo to use main.rs as the library entrypoint
 
 [dependencies]
 tokio = { version = "1.35", features = ["full"] }
