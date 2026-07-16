@@ -1,4 +1,0 @@
-git add .
-git commit -m "added automated android release build workflow"
-git tag -a v1.0.0 -m "Initial Android Release"
-git push origin main --tags
