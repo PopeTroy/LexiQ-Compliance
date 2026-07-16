@@ -4,9 +4,13 @@ version = "1.0.0"
 edition = "2021"
 description = "A unified, multi-tier linguistic compliance engine designed to process textual diagnostics with ultra-low latency on Android."
 
+# ◄— ADD THIS BLOCK TO FORCE SHARED LIBRARY COMPILATION (.so)
+[lib]
+name = "lexiq_compliance"
+crate-type = ["cdylib"]
+
 [dependencies]
 tokio = { version = "1.35", features = ["full"] }
-# Swapped default-features for pure Rust TLS to prevent Android cross-compilation OpenSSL errors
 reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
