@@ -1,16 +1,17 @@
-name: Android Release Build
+name: Android Only APK Build (Root Layout)
 
 on:
   push:
     tags:
-      - 'v*' # Triggers when you push a tag like v1.0.0
-  workflow_dispatch: # Enables manual triggering via the Actions UI tab
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
       - name: Set up Java
         uses: actions/setup-java@v3
@@ -31,34 +32,33 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk
 
-      - name: Compile Rust for Android
+      - name: Compile Rust NDK Binaries
         run: |
-          cd rust_core
+          # Compiles directly from root since Cargo.toml is here
           cargo ndk -t arm64-v8a -t armeabi-v7a build --release
-          mkdir -p ../flutter_ui/android/app/src/main/jniLibs/arm64-v8a
-          mkdir -p ../flutter_ui/android/app/src/main/jniLibs/armeabi-v7a
-          cp target/aarch64-linux-android/release/librust_core.so ../flutter_ui/android/app/src/main/jniLibs/arm64-v8a/
-          cp target/armv7-linux-android/release/librust_core.so ../flutter_ui/android/app/src/main/jniLibs/armeabi-v7a/
+          
+          # Links binaries into native android structure
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          mkdir -p android/app/src/main/jniLibs/armeabi-v7a
+          cp target/aarch64-linux-android/release/librust_engine.so android/app/src/main/jniLibs/arm64-v8a/
+          cp target/armv7-linux-android/release/librust_engine.so android/app/src/main/jniLibs/armeabi-v7a/
 
-      - name: Build APK
+      - name: Build Android APK
         run: |
-          cd flutter_ui
           flutter build apk --release
 
-      # 📦 STEP A: Always upload the APK as a workflow run artifact (ideal for manual builds)
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lexiq-compliance-android-apk
-          path: flutter_ui/build/app/outputs/flutter-apk/app-release.apk
+          name: lexiq-android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
 
-      # 🚀 STEP B: Deploy to official Github Releases ONLY if triggered by a tag
       - name: Upload APK to Github Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: flutter_ui/build/app/outputs/flutter-apk/app-release.apk
+          files: build/app/outputs/flutter-apk/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
