@@ -34,26 +34,49 @@ jobs:
 
       - name: Compile Rust NDK Binaries
         run: |
-          # Compiles from root where Cargo.toml resides
+          # 1. Compile the NDK libraries from the directory containing Cargo.toml
+          RUST_DIR=$(find . -name "Cargo.toml" -exec dirname {} \; | head -n 1)
+          echo "Found Rust project in: $RUST_DIR"
+          cd "$RUST_DIR"
           cargo ndk -t arm64-v8a -t armeabi-v7a build --release
+          cd - # Return to root
           
-          # Move compiled .so libraries into Android's native dependencies folder
-          # Fixed target folder name to armv7-linux-androideabi
-          mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          mkdir -p android/app/src/main/jniLibs/armeabi-v7a
-          cp target/aarch64-linux-android/release/liblexiq_compliance.so android/app/src/main/jniLibs/arm64-v8a/
-          cp target/armv7-linux-androideabi/release/liblexiq_compliance.so android/app/src/main/jniLibs/armeabi-v7a/
+          # 2. Dynamically locate the Android native structure
+          ANDROID_DIR=$(find . -path "*/android/app/src/main" -type d | head -n 1)
+          if [ -z "$ANDROID_DIR" ]; then
+            echo "ERROR: Could not find Android native folder layout (android/app/src/main)!"
+            exit 1
+          fi
+          echo "Linking binaries to Android target directory: $ANDROID_DIR"
+          
+          # 3. Create JNI directories and copy the built libraries safely
+          mkdir -p "$ANDROID_DIR/jniLibs/arm64-v8a"
+          mkdir -p "$ANDROID_DIR/jniLibs/armeabi-v7a"
+          
+          cp "$RUST_DIR/target/aarch64-linux-android/release/liblexiq_compliance.so" "$ANDROID_DIR/jniLibs/arm64-v8a/"
+          cp "$RUST_DIR/target/armv7-linux-androideabi/release/liblexiq_compliance.so" "$ANDROID_DIR/jniLibs/armeabi-v7a/"
 
       - name: Build Android APK
         run: |
+          # 1. Dynamically locate the Flutter project containing pubspec.yaml
+          FLUTTER_DIR=$(find . -name "pubspec.yaml" -exec dirname {} \; | head -n 1)
+          if [ -z "$FLUTTER_DIR" ]; then
+            echo "ERROR: No pubspec.yaml found in this repository. Please run 'flutter create .' locally and push your Flutter project."
+            exit 1
+          fi
+          echo "Executing Flutter build inside: $FLUTTER_DIR"
+          
+          # 2. Move to the directory and run the build
+          cd "$FLUTTER_DIR"
           flutter build apk --release
 
-      # 📦 Always upload APK to Actions Run Summary for instant manual downloading
+      # 📦 Always upload the compiled APK as a manual Actions run artifact
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: lexiq-compliance-android-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          # Finds and uploads whatever APK was successfully generated
+          path: "**/build/app/outputs/flutter-apk/app-release.apk"
           if-no-files-found: error
           retention-days: 14
 
@@ -62,6 +85,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: build/app/outputs/flutter-apk/app-release.apk
+          files: "**/build/app/outputs/flutter-apk/app-release.apk"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
