@@ -8,9 +8,10 @@ use tokio::task;
 
 #[tokio::main]
 async fn main() {
-    dotenv::dotenv().ok();
+    // ◄— Corrected environment loading call to utilize dotenvy cleanly
+    dotenvy::dotenv().ok();
 
-    // Fetch secrets securely from local configuration layer
+    // Fetch secrets securely from the local system configuration layer
     let groq_api_key = env::var("GROQ_API_KEY").ok();
     let nvidia_api_key = env::var("NVIDIA_API_KEY").ok();
 
