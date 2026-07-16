@@ -34,14 +34,15 @@ jobs:
 
       - name: Compile Rust NDK Binaries
         run: |
-          # Compiles from root where Cargo.toml resides (clean root setup)
+          # Compiles from root where Cargo.toml resides
           cargo ndk -t arm64-v8a -t armeabi-v7a build --release
           
           # Move compiled .so libraries into Android's native dependencies folder
+          # Modified to match your actual crate name: liblexiq_compliance.so
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
           mkdir -p android/app/src/main/jniLibs/armeabi-v7a
-          cp target/aarch64-linux-android/release/librust_engine.so android/app/src/main/jniLibs/arm64-v8a/
-          cp target/armv7-linux-android/release/librust_engine.so android/app/src/main/jniLibs/armeabi-v7a/
+          cp target/aarch64-linux-android/release/liblexiq_compliance.so android/app/src/main/jniLibs/arm64-v8a/
+          cp target/armv7-linux-android/release/liblexiq_compliance.so android/app/src/main/jniLibs/armeabi-v7a/
 
       - name: Build Android APK
         run: |
