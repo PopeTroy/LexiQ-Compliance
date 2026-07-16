@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*' # Triggers when you push a tag like v1.0.0
+  workflow_dispatch: # Enables manual triggering via the Actions UI tab
 
 jobs:
   build:
@@ -44,7 +45,18 @@ jobs:
           cd flutter_ui
           flutter build apk --release
 
+      # 📦 STEP A: Always upload the APK as a workflow run artifact (ideal for manual builds)
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lexiq-compliance-android-apk
+          path: flutter_ui/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      # 🚀 STEP B: Deploy to official Github Releases ONLY if triggered by a tag
       - name: Upload APK to Github Release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
           files: flutter_ui/build/app/outputs/flutter-apk/app-release.apk
