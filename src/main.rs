@@ -8,7 +8,6 @@ use tokio::task;
 
 #[tokio::main]
 async fn main() {
-    // ◄— Corrected environment loading call to utilize dotenvy cleanly
     dotenvy::dotenv().ok();
 
     // Fetch secrets securely from the local system configuration layer
