@@ -15,7 +15,7 @@ class LexiQApp extends StatelessWidget {
       title: 'LexiQ Compliance',
       theme: ThemeData(
         brightness: Brightness.dark,
-        primaryColor: const Color(0xFF00E676), // Sleek Compliance Green
+        primaryColor: const Color(0xFF00E676), // Compliance Green
         scaffoldBackgroundColor: const Color(0xFF121212),
       ),
       home: const ComplianceDashboard(),
@@ -35,18 +35,16 @@ class _ComplianceDashboardState extends State<ComplianceDashboard> {
   String _sessionLog = 'No active session. Tap "Initialize Compliance" to begin.';
   bool _isProcessing = false;
 
-  // Simple FFI hook to verify the native .so compiled correctly in the APK
   void _testNativeBinding() {
     try {
       if (Platform.isAndroid) {
-        // This dynamically links to the compiled liblexiq_compliance.so in jniLibs
         final ffi.DynamicLibrary nativeLib = ffi.DynamicLibrary.open('liblexiq_compliance.so');
         setState(() {
           _sessionLog = "Native binary loaded successfully!\nLibrary Path: $nativeLib";
         });
       } else {
         setState(() {
-          _sessionLog = "Native loading bypassed. Please run on an Android device/emulator.";
+          _sessionLog = "Native loading bypassed. Run on an Android device/emulator.";
         });
       }
     } catch (e) {
@@ -59,11 +57,11 @@ class _ComplianceDashboardState extends State<ComplianceDashboard> {
   void _runComplianceAudit() {
     setState(() {
       _isProcessing = true;
-      _sessionLog = "Initializing 80 Ephemeral Sentinel Clones...\n";
+      _sessionLog = "Connecting to engine pipeline...";
     });
 
-    // Simulate the non-linear execution flow using the selected tier suffix
-    Future.delayed(const Duration(milliseconds: 800), () {
+    // Simulate real data ingestion timing
+    Future.delayed(const Duration(milliseconds: 2500), () {
       final String suffix = _selectedTier.split(' ')[0];
       final String sessionId = "ZAR-SESS-910283-$suffix";
       
@@ -166,13 +164,7 @@ Compliance Status: SECURE / VERIFIED BY AUDITOR BASE
                       foregroundColor: Colors.black,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: _isProcessing
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
-                          )
-                        : const Text('Initialize Compliance', style: TextStyle(fontWeight: FontWeight.bold)),
+                    child: const Text('Initialize Compliance', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -187,7 +179,46 @@ Compliance Status: SECURE / VERIFIED BY AUDITOR BASE
                 ),
               ],
             ),
+            
             const SizedBox(height: 25),
+            
+            // ◄— Grammarly Style Ingestion Progress Indicator
+            AnimatedOpacity(
+              duration: const Duration(milliseconds: 200),
+              opacity: _isProcessing ? 1.0 : 0.0,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Ingesting text analytics engine data...',
+                          style: TextStyle(color: Colors.blue[400], fontSize: 13, fontStyle: FontStyle.italic),
+                        ),
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blue),
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: const LinearProgressIndicator(
+                        backgroundColor: Color(0xFF1E1E1E),
+                        color: Colors.blue,
+                        minHeight: 6,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
             const Text(
               'Auditor Transaction Output:',
               style: TextStyle(fontSize: 14, color: Colors.grey),
@@ -210,6 +241,21 @@ Compliance Status: SECURE / VERIFIED BY AUDITOR BASE
                       color: Color(0xFFE0E0E0),
                     ),
                   ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 15),
+            TextField(
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Enter search text or command parameters...',
+                hintStyle: const TextStyle(color: Colors.grey),
+                prefixIcon: const Icon(Icons.keyboard, color: Color(0xFF00E676)),
+                filled: true,
+                fillColor: const Color(0xFF1E1E1E),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
                 ),
               ),
             ),
