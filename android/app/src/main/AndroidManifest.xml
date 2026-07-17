@@ -1,10 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="org.linguistic.assistant">
 
-    <!-- Allocates explicit system application states to protect background lifecycle loops -->
+    <!-- Uses the required placeholder token to satisfy modern Flutter v2 embedding engines -->
     <application
         android:label="LexiQ Compliance"
-        android:name="io.flutter.app.FlutterApplication"
+        android:name="${applicationName}"
         android:icon="@android:drawable/sym_def_app_icon"
         android:hardwareAccelerated="true">
         
