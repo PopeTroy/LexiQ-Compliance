@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="LaunchTheme" parent="android:Theme.Material.Light.NoActionBar">
+    <!-- Core layout parameters that Flutter needs to initialize gracefully -->
+    <style name="LaunchTheme" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowIsTranslucent">false</item>
     </style>
-    <style name="NormalTheme" parent="android:Theme.Material.Light.NoActionBar">
+    
+    <!-- Theme applied immediately after the main app layer loads -->
+    <style name="NormalTheme" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
     </style>
 </resources>
