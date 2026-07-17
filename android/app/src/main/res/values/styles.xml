@@ -1,11 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Theme applied while the Flutter companion is bootstrapping -->
     <style name="LaunchTheme" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
     </style>
-    
-    <!-- Theme applied immediately after the main app layer loads -->
     <style name="NormalTheme" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
     </style>
