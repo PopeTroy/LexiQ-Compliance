@@ -3,31 +3,44 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:background="#121212">
+    android:background="#0A0A0A">
 
-    <!-- Real-Time Text Ingestion Suggestions (Like Grammarly) -->
+    <!-- Ingestion Suggestion Bar -->
     <LinearLayout
+        android:id="@+id/status_bar"
         android:layout_width="match_parent"
-        android:layout_height="40dp"
-        android:background="#1E1E1E"
+        android:layout_height="42dp"
+        android:background="#121212"
         android:orientation="horizontal"
         android:paddingStart="12dp"
         android:paddingEnd="12dp"
         android:gravity="center_vertical">
+        
+        <!-- Tiki Mask Icon Status Indicator -->
+        <TextView
+            android:id="@+id/tikiIcon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🗿"
+            android:textSize="18sp"
+            android:layout_marginEnd="8dp"/>
+            
         <TextView
             android:id="@+id/suggestionText"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="LexiQ Engine: Monitoring input stream..."
+            android:text="LexiQ Engine: Text clear ✅"
             android:textColor="#00E676"
             android:textStyle="bold"
             android:textSize="13sp" />
     </LinearLayout>
 
-    <android.inputmethodservice.KeyboardView
-        android:id="@+id/keyboard"
+    <!-- Pinned Container where rows of neon buttons are rendered dynamically -->
+    <LinearLayout
+        android:id="@+id/keyboardContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#121212" />
+        android:orientation="vertical"
+        android:padding="4dp" />
 </LinearLayout>
