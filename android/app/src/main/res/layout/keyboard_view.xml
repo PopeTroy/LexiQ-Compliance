@@ -5,7 +5,7 @@
     android:orientation="vertical"
     android:background="#121212">
 
-    <!-- Live Grammar and Spellcheck Suggestion Bar (Like Grammarly) -->
+    <!-- Real-Time Text Ingestion Suggestions (Like Grammarly) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="40dp"
@@ -25,7 +25,6 @@
             android:textSize="13sp" />
     </LinearLayout>
 
-    <!-- The actual software keyboard view engine container -->
     <android.inputmethodservice.KeyboardView
         android:id="@+id/keyboard"
         android:layout_width="match_parent"
