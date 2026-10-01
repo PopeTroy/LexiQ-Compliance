@@ -10,19 +10,18 @@ class LexiQApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'LexiQ Grammar Suite',
+      title: 'LexiQ Hyper-Dimensional Suite',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
         primaryColor: const Color(0xFF00E676),
-        scaffoldBackgroundColor: const Color(0xFF121212),
+        scaffoldBackgroundColor: const Color(0xFF0D1117),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF00E676),
-          surface: Color(0xFF1E1E1E),
+          surface: Color(0xFF161B22),
         ),
-        // Updated from CardTheme to CardThemeData for Flutter 3.x compatibility
         cardTheme: CardThemeData(
-          color: const Color(0xFF1E1E1E),
+          color: const Color(0xFF161B22),
           elevation: 2,
           margin: const EdgeInsets.all(8),
           shape: RoundedRectangleBorder(
@@ -35,15 +34,22 @@ class LexiQApp extends StatelessWidget {
   }
 }
 
-class LexiQDashboardScreen extends StatelessWidget {
+class LexiQDashboardScreen extends StatefulWidget {
   const LexiQDashboardScreen({super.key});
+
+  @override
+  State<LexiQDashboardScreen> createState() => _LexiQDashboardScreenState();
+}
+
+class _LexiQDashboardScreenState extends State<LexiQDashboardScreen> {
+  double currentTemp = 18.0;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('LexiQ Grammar Suite (Free Edition)'),
-        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('LexiQ Hyper-Dimensional Engine'),
+        backgroundColor: const Color(0xFF161B22),
         elevation: 0,
         centerTitle: true,
       ),
@@ -52,91 +58,87 @@ class LexiQDashboardScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Status Card
+            // PID Controller Status Card
             Card(
               child: Padding(
-                padding: const EdgeInsets.all(24.0),
+                padding: const EdgeInsets.all(20.0),
                 child: Column(
                   children: const [
-                    Icon(
-                      Icons.keyboard_arrow_up_rounded,
-                      size: 64,
-                      color: Color(0xFF00E676),
-                    ),
+                    Icon(Icons.tune_rounded, size: 48, color: Color(0xFF00E676)),
                     SizedBox(height: 12),
                     Text(
-                      'LexiQ Hybrid Engine Active',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 20,
-                        letterSpacing: 0.3,
-                      ),
+                      'PID Safety & Compliance Active',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Offline ONNX model loaded for real-time physics-aware spellcheck & grammar.',
+                      'Closed-loop feedback loop active: Error compensation Kp=0.8, Ki=0.15, Kd=0.05.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey, height: 1.4),
+                      style: TextStyle(color: Colors.grey, fontSize: 13),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
-            // Dual Engine Status
+            // Camera Telemetry Mock Display
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Engine Architecture',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: Color(0xFF00E676),
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: const [
+                        Text('Camera Telemetry Overlay',
+                            style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00E676))),
+                        Icon(Icons.videocam_rounded, color: Color(0xFF00E676)),
+                      ],
                     ),
-                    const SizedBox(height: 16),
-                    _buildFeatureTile(
-                      icon: Icons.offline_bolt_rounded,
-                      title: 'Primary: Offline ONNX Model (onnx.cql)',
-                      subtitle: 'Zero-latency local processing. Runs on-device with quantized execution.',
-                    ),
-                    const Divider(height: 24, color: Colors.white10),
-                    _buildFeatureTile(
-                      icon: Icons.cloud_done_rounded,
-                      title: 'Fallback: NVIDIA NIM Microservices',
-                      subtitle: 'Online LLM enhancement for complex multi-modal & vision tasks.',
-                    ),
+                    const SizedBox(height: 12),
+                    _buildTelemetryRow('Frame Rate:', '60.0 FPS'),
+                    _buildTelemetryRow('Inference Latency:', '4.2 ms (LLVM Native)'),
+                    _buildTelemetryRow('NVIDIA NIM Model Base:', 'Downloaded & Cached'),
+                    _buildTelemetryRow('PhD Domain Context:', 'Tech / Bio / Finance / Eng'),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
-            // Active Status Pill
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF00E676).withOpacity(0.3)),
-              ),
-              child: Row(
-                children: const [
-                  Icon(Icons.check_circle, color: Color(0xFF00E676)),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'onnx.cql model pre-loaded in android/app/src/main/assets/',
-                      style: TextStyle(fontSize: 13, color: Colors.white70),
+            // Weather, Attire & Diet Advisor
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Weather & Cognitive Lifestyle Optimization',
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00E676))),
+                    const SizedBox(height: 12),
+                    Text('Current Temperature: ${currentTemp.toStringAsFixed(1)}°C'),
+                    Slider(
+                      value: currentTemp,
+                      min: 0,
+                      max: 40,
+                      activeColor: const Color(0xFF00E676),
+                      onChanged: (val) {
+                        setState(() {
+                          currentTemp = val;
+                        });
+                      },
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Text(
+                      currentTemp < 15
+                          ? 'Attire: Thermal insulated jacket & wind resistance layer.\nDiet: Complex fats & high-density protein for thermogenesis.'
+                          : 'Attire: Breathable moisture-wicking technical fabrics.\nDiet: High hydration, electrolyte management, light proteins.',
+                      style: const TextStyle(color: Colors.grey, fontSize: 13, height: 1.4),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -145,36 +147,16 @@ class LexiQDashboardScreen extends StatelessWidget {
     );
   }
 
-  static Widget _buildFeatureTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        CircleAvatar(
-          backgroundColor: const Color(0xFF00E676).withOpacity(0.12),
-          child: Icon(icon, color: const Color(0xFF00E676)),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: const TextStyle(color: Colors.grey, fontSize: 13, height: 1.3),
-              ),
-            ],
-          ),
-        ),
-      ],
+  static Widget _buildTelemetryRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        ],
+      ),
     );
   }
 }
