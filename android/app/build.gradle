@@ -25,6 +25,7 @@ android {
     }
 
     compileOptions {
+        coreLibraryDesugaringEnabled true
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
@@ -35,7 +36,7 @@ android {
 
     defaultConfig {
         applicationId "org.linguistic.assistant"
-        minSdk 21
+        minSdk 26
         targetSdk 34
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
@@ -64,4 +65,5 @@ flutter {
 
 dependencies {
     implementation 'com.microsoft.onnxruntime:onnxruntime:1.17.0'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 }
