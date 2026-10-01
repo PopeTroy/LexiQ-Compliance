@@ -1,20 +1,24 @@
-name: Android Only APK Build
+name: Build LexiQ Mobile Application
 
 on:
   push:
+    branches: [ "main", "master" ]
     tags:
       - 'v*'
+  pull_request:
+    branches: [ "main", "master" ]
   workflow_dispatch: # Enables manual triggering via the Actions UI tab
 
 jobs:
-  build:
+  build-android:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v3
+      - name: Set up Java Development Kit (JDK)
+        uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -23,6 +27,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          cache: true
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -56,7 +61,17 @@ jobs:
           cp "$RUST_DIR/target/aarch64-linux-android/release/liblexiq_compliance.so" "$ANDROID_DIR/jniLibs/arm64-v8a/"
           cp "$RUST_DIR/target/armv7-linux-androideabi/release/liblexiq_compliance.so" "$ANDROID_DIR/jniLibs/armeabi-v7a/"
 
-      - name: Build Android APK
+      - name: Install Dependencies
+        run: |
+          FLUTTER_DIR=$(find . -name "pubspec.yaml" -exec dirname {} \; | head -n 1)
+          if [ -n "$FLUTTER_DIR" ]; then
+            cd "$FLUTTER_DIR"
+            flutter pub get
+          fi
+
+      - name: Build Android APK with Secrets
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
           # 1. Dynamically locate the Flutter project containing pubspec.yaml
           FLUTTER_DIR=$(find . -name "pubspec.yaml" -exec dirname {} \; | head -n 1)
@@ -66,22 +81,22 @@ jobs:
           fi
           echo "Executing Flutter build inside: $FLUTTER_DIR"
           
-          # 2. Move to the directory and run the build
+          # 2. Move to the directory and run the build with Dart defines
           cd "$FLUTTER_DIR"
-          flutter build apk --release
+          flutter build apk --release \
+            --dart-define=NVIDIA_API_KEY="$NVIDIA_API_KEY"
 
-      # 📦 Always upload the compiled APK as a manual Actions run artifact
+      # 📦 Always upload the compiled APK as an Actions run artifact
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: lexiq-compliance-android-apk
-          # Finds and uploads whatever APK was successfully generated
           path: "**/build/app/outputs/flutter-apk/app-release.apk"
           if-no-files-found: error
           retention-days: 14
 
-      # 🚀 Deploy to official Github Releases ONLY if triggered by a tag
-      - name: Upload APK to Github Release
+      # 🚀 Deploy to official GitHub Releases ONLY if triggered by a tag
+      - name: Upload APK to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
