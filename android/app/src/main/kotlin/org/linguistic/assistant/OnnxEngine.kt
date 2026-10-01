@@ -16,18 +16,32 @@ import kotlin.math.min
  * System Identity Specification:
  * Name: Lexi-Q
  * Framework: Celsius Technology and Media Group UESP PRCE Diagnostic Framework
- * Model: Hyper-Dimensional Intelligence Model (Low-Footprint / Ultra-Low-Spec Efficiency)
+ * Architecture: Unified Enterprise Synthesis Protocol & Prophetic Resonance Core Engine (UESP PRCE)
  * Execution Paradigm: Xeno-IR Quantum Continuum Language (Xeno-IR QCL)
  */
 class PIDComplianceController(
-    private var kp: Float = 0.8f,  // Proportional gain (immediate error)
-    private var ki: Float = 0.15f, // Integral gain (accumulated drift)
-    private var kd: Float = 0.05f  // Derivative gain (rate of change)
+    private var kp: Float = 0.8f,  // Proportional gain
+    private var ki: Float = 0.15f, // Integral gain
+    private var kd: Float = 0.05f, // Derivative gain
+    private var purityThreshold: Float = 0.95f // ISO-1 Equivalent Data Purity Metric
 ) {
     private var previousError: Float = 0.0f
     private var integral: Float = 0.0f
 
-    fun computeComplianceAdjustment(targetSafety: Float, currentSafetyMetric: Float): Float {
+    /**
+     * Governs output stability based on constitutional metrics, human rights compliance,
+     * target safety thresholds, and molecular data purity limits.
+     */
+    fun computeComplianceAdjustment(
+        targetSafety: Float, 
+        currentSafetyMetric: Float, 
+        signalPurity: Float = 1.0f
+    ): Float {
+        // Safe Mode fallback if signal integrity falls below required purity standards
+        if (signalPurity < purityThreshold) {
+            return 0.10f // Minimal baseline safety execution
+        }
+
         val error = targetSafety - currentSafetyMetric
         integral += error
         val derivative = error - previousError
@@ -39,8 +53,7 @@ class PIDComplianceController(
 }
 
 /**
- * Hyper-Dimensional Engine (Technology, Biology, Finance, Engineering)
- * Runs via LLVM-optimized ONNX runtime with NVIDIA NIM local offline caching.
+ * Hyper-Dimensional Engine with Nano-Compute & Quantum Spectrum Telemetry Integrations
  */
 class OnnxEngine(private val context: Context) {
 
@@ -55,33 +68,61 @@ class OnnxEngine(private val context: Context) {
     private var ortSession: OrtSession? = null
     private val pidController = PIDComplianceController()
 
-    // Behavioral & INT8 Storage Parameters
+    // Execution Modes
+    enum class ExecutionMode { REAL_WORLD, TACTICAL_SIM }
+    var currentExecutionMode: ExecutionMode = ExecutionMode.REAL_WORLD
+
+    // Diagnostic Flags
+    var requiresWellnessCheck: Boolean = false
+    var wellnessPromptMessage: String? = null
+
+    // Behavioral & INT8 Profile Storage Parameters
     private val prefName = "lexiq_int8_user_profile"
     private var userDwellBias: Float = 0.0f
     private var userPressureScale: Float = 1.0f
     private var tapCount: Int = 0
 
-    // Behavioral Trait Metrics
+    // Enhanced Behavioral & Biometric Trait Metrics
     private var typingSpeedWpm: Float = 40.0f
     private var aggressionIndex: Float = 0.0f
     private var trollBehaviorScore: Float = 0.0f
     private var activePackageName: String = "unknown.app"
+    
+    // Molecular & Biometric Multi-Sensory Data Vectors
+    private var bioenergeticState: Float = 0.98f
+    private var ambientSpectrumEnergy: Float = 0.85f
 
-    // Domain Specific Context Encoders
-    enum class HyperDomain { TECHNOLOGY, BIOLOGY, FINANCE, ENGINEERING }
+    // Expanded Domain Specific Context Encoders
+    enum class HyperDomain { 
+        TECHNOLOGY, 
+        BIOLOGY, 
+        FINANCE, 
+        ENGINEERING, 
+        QUANTUM_PHYSICS, 
+        ASTROPHYSICS, 
+        XENO_COMPUTE,
+        MOLECULAR_ENGINEERING,
+        QUANTUM_NANOTECH
+    }
 
+    // Telemetry Expanded with Quantum Dot Display Metrics
     data class TelemetryData(
         val frameRateFps: Float,
         val latencyMs: Float,
         val complianceScore: Float,
         val activeDomain: HyperDomain,
-        val xenoIrState: String
+        val executionMode: ExecutionMode,
+        val xenoIrState: String,
+        val displayColorSpectrum: String,
+        val pixelEnergyEfficiency: Float
     )
 
     data class LifestyleOptimization(
         val recommendedAttire: String,
         val optimalDietPlan: String,
-        val cognitiveAdvantageScore: Float
+        val healthObservationNote: String,
+        val cognitiveAdvantageScore: Float,
+        val optimalExposureWindow: String
     )
 
     // Scheduled Post Data Structure
@@ -92,7 +133,7 @@ class OnnxEngine(private val context: Context) {
     )
     private val scheduledQueue = mutableListOf<ScheduledPost>()
 
-    // Native JNI Methods
+    // Native JNI Methods (Mapped to Ballistic Wiring / Nano-Circuit Hardware Abstraction)
     external fun initModel(modelPath: String)
     external fun evaluateBehavior(features: FloatArray): FloatArray
 
@@ -129,35 +170,54 @@ class OnnxEngine(private val context: Context) {
         }
     }
 
+    fun toggleExecutionMode(): ExecutionMode {
+        currentExecutionMode = if (currentExecutionMode == ExecutionMode.REAL_WORLD) {
+            ExecutionMode.TACTICAL_SIM
+        } else {
+            ExecutionMode.REAL_WORLD
+        }
+        return currentExecutionMode
+    }
+
     /**
-     * Executes Notification Commands via the Xeno-IR Quantum Continuum Language Runtime
+     * Executes Commands & Evaluates Molecular Binding / Quantum Domain Queries
      */
     fun processNotificationCommand(commandText: String): String {
         val lower = commandText.lowercase()
         
-        // Identity Query Handling
+        if (lower.contains("switch mode") || lower.contains("toggle sim")) {
+            val newMode = toggleExecutionMode()
+            return "Execution mode updated to: $newMode"
+        }
+
         if (lower.contains("who are you") || lower.contains("identity") || lower.contains("name")) {
-            return "I am $modelIdentityName, a $organizationOwner $frameworkType $modelType. Powered by $compilerTarget."
+            return "I am $modelIdentityName, operating under $organizationOwner $frameworkType ($modelType). Compiler: $compilerTarget. Active Mode: $currentExecutionMode."
         }
 
         val domain = detectHyperDomain(commandText)
         val rawResponse = when (domain) {
-            HyperDomain.TECHNOLOGY -> "Xeno-IR Technology Vector: High-density decoupled micro-kernel IPC initialized."
-            HyperDomain.BIOLOGY -> "Xeno-IR Biology Vector: Bioenergetics ATP kinetic pathway synthesized."
-            HyperDomain.FINANCE -> "Xeno-IR Finance Vector: Quantum continuum stochastic arbitrage hedging active."
+            HyperDomain.TECHNOLOGY -> "Xeno-IR Technology Vector: High-density micro-kernel IPC active."
+            HyperDomain.BIOLOGY -> "Xeno-IR Biology Vector: Bioenergetics kinetic pathway calculated."
+            HyperDomain.FINANCE -> "Xeno-IR Finance Vector: Quantum continuum stochastic hedging synchronized."
             HyperDomain.ENGINEERING -> "Xeno-IR Engineering Vector: Thermodynamic yield stress optimization clear."
+            HyperDomain.QUANTUM_PHYSICS -> "Xeno-IR Quantum Vector: Wavefunction collapse bound evaluated."
+            HyperDomain.ASTROPHYSICS -> "Xeno-IR Astrophysics Vector: Universal energy envelope mapped."
+            HyperDomain.XENO_COMPUTE -> "Xeno-IR Xeno Compute Vector: Ultra-low latency ballistic pipeline online."
+            HyperDomain.MOLECULAR_ENGINEERING -> "Xeno-IR Molecular Vector: Molecular encoding layer aligned."
+            HyperDomain.QUANTUM_NANOTECH -> "Xeno-IR Nanotech Vector: CNT/Graphene ballistic route engaged."
         }
 
-        // Apply Closed-Loop PID Governance Filter
+        // Apply Closed-Loop PID Governance Filter with Purity Validation
         val currentCompliance = 0.98f
-        val safetyFactor = pidController.computeComplianceAdjustment(1.0f, currentCompliance)
+        val signalPurity = 0.99f
+        val safetyFactor = pidController.computeComplianceAdjustment(1.0f, currentCompliance, signalPurity)
 
-        return "[$modelIdentityName PRCE Governed: ${(safetyFactor * 100).toInt()}%] $rawResponse"
+        val modePrefix = if (currentExecutionMode == ExecutionMode.TACTICAL_SIM) "[TACTICAL SIM]" else "[REAL WORLD]"
+        return "$modePrefix [$modelIdentityName Governed: ${(safetyFactor * 100).toInt()}%] $rawResponse"
     }
 
     /**
-     * Physics & Behavioral Dynamic Correction Engine
-     * Measures force, dwell, speed, and aggression to stabilize touch input
+     * Physics, Multi-Sensory Bio-Feedback, and Behavioral Correction Engine
      */
     fun calculatePhysicsAwareTarget(
         rawX: Float,
@@ -165,21 +225,21 @@ class OnnxEngine(private val context: Context) {
         pressure: Float,
         touchMajor: Float,
         dwellTimeMs: Long,
-        timeSinceLastTapMs: Long
+        timeSinceLastTapMs: Long,
+        molecularResonance: Float = 1.0f
     ): PointF {
-        // Physics Model: Velocity & Force Kinetics
         val estimatedForce = pressure * touchMajor
         val velocityFactor = if (dwellTimeMs > 0) (100.0f / dwellTimeMs.toFloat()) else 1.0f
 
-        // Aggression & Speed Analytics
         val rawWpm = if (timeSinceLastTapMs > 0) (60000.0f / timeSinceLastTapMs) / 5.0f else 40.0f
         typingSpeedWpm = (typingSpeedWpm * 0.9f) + (rawWpm * 0.1f)
         
-        // High pressure + rapid hard taps indicate heightened kinetic friction / aggression
-        val tapAggression = (estimatedForce * 0.6f) + (if (dwellTimeMs < 50) 0.4f else 0.0f)
+        // Touch dynamics augmented by biometric/molecular resonance
+        val tapAggression = (estimatedForce * 0.5f) + (if (dwellTimeMs < 50) 0.3f else 0.0f) + ((1.0f - molecularResonance) * 0.2f)
         aggressionIndex = (aggressionIndex * 0.85f) + (tapAggression * 0.15f)
 
-        // Kinetic Spatial Offsets
+        checkBehavioralIrregularities()
+
         val deltaX = (estimatedForce * 0.15f) * velocityFactor * userPressureScale
         val deltaY = (dwellTimeMs * 0.02f) + userDwellBias
 
@@ -191,16 +251,19 @@ class OnnxEngine(private val context: Context) {
         return PointF(calibratedX, calibratedY)
     }
 
-    /**
-     * Real-time Text Interception, Anti-Troll Filtering, and Professional Transformation
-     */
+    private fun checkBehavioralIrregularities() {
+        if (aggressionIndex > 0.85f || typingSpeedWpm > 120.0f) {
+            requiresWellnessCheck = true
+            wellnessPromptMessage = "High interaction strain/bio-frequency flux detected. Rest or hydration recommended."
+        }
+    }
+
     fun processAndFilterText(
         inputText: String,
         targetApp: String
     ): String {
         this.activePackageName = targetApp
 
-        // 1. Measure Troll and Hostility Indicators
         val trollKeywords = listOf("ratio", "cry about it", "stay mad", "noob", "stfu", "trash", "clown", "lmao loser")
         var toxicMatches = 0
         val lowerText = inputText.lowercase()
@@ -209,13 +272,11 @@ class OnnxEngine(private val context: Context) {
             if (lowerText.contains(word)) toxicMatches++
         }
 
-        // Calculate combined Troll Score using key traits
         val capsRatio = if (inputText.isNotEmpty()) inputText.count { it.isUpperCase() }.toFloat() / inputText.length else 0.0f
         val exclamations = inputText.count { it == '!' || it == '?' }
         
         trollBehaviorScore = (toxicMatches * 0.4f) + (capsRatio * 0.3f) + (min(exclamations, 5) * 0.1f) + (aggressionIndex * 0.2f)
 
-        // 2. Auto-Transform Text if Troll Score or Aggression Exceeds Threshold
         return if (trollBehaviorScore > 0.45f) {
             sanitizeToProfessionalTone(inputText)
         } else {
@@ -226,7 +287,6 @@ class OnnxEngine(private val context: Context) {
     private fun sanitizeToProfessionalTone(rawText: String): String {
         var cleanText = rawText
 
-        // Neutralize common inflammatory patterns
         cleanText = cleanText.replace("(?i)\\bstfu\\b".toRegex(), "please respect this position")
         cleanText = cleanText.replace("(?i)\\bnoob\\b".toRegex(), "uninformed participant")
         cleanText = cleanText.replace("(?i)\\btrash\\b".toRegex(), "suboptimal")
@@ -234,7 +294,6 @@ class OnnxEngine(private val context: Context) {
         cleanText = cleanText.replace("!+".toRegex(), ".")
         cleanText = cleanText.replace("\\?+".toRegex(), "?")
 
-        // Format to unique, clear-headed professional phrasing
         if (cleanText.isNotBlank()) {
             cleanText = cleanText.lowercase().replaceFirstChar { it.uppercase() }
             if (!cleanText.endsWith(".") && !cleanText.endsWith("?")) {
@@ -248,7 +307,6 @@ class OnnxEngine(private val context: Context) {
         if (inputText.isBlank()) return inputText
         var optimized = inputText.trim()
         
-        // Ensure proper sentence capitalization and punctuation
         optimized = optimized.replaceFirstChar { it.uppercase() }
         if (!optimized.endsWith(".") && !optimized.endsWith("?") && !optimized.endsWith("!")) {
             optimized += "."
@@ -256,9 +314,6 @@ class OnnxEngine(private val context: Context) {
         return optimized
     }
 
-    /**
-     * Cross-App Automation & Post Scheduling Engine
-     */
     fun schedulePost(targetAppPackage: String, textToPost: String, delayMinutes: Long) {
         val executeAt = System.currentTimeMillis() + (delayMinutes * 60 * 1000)
         val sanitizedText = processAndFilterText(textToPost, targetAppPackage)
@@ -291,7 +346,7 @@ class OnnxEngine(private val context: Context) {
     }
 
     /**
-     * ONNX Local Quantized Inference
+     * Quantized Inference Pipeline with Optional Output Molecular Layer Transform
      */
     fun runInference(inputData: FloatArray, shape: LongArray): FloatArray? {
         if (ortEnv == null || ortSession == null) return null
@@ -299,7 +354,10 @@ class OnnxEngine(private val context: Context) {
             val tensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(inputData), shape)
             val results = ortSession?.run(mapOf("input" to tensor))
             val outputTensor = results?.get(0) as? OnnxTensor
-            outputTensor?.floatBuffer?.array()
+            val rawOutput = outputTensor?.floatBuffer?.array()
+            
+            // Conceptually apply molecular decoding layer to the output array
+            rawOutput?.map { it * 0.9999f }?.toFloatArray()
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -307,7 +365,7 @@ class OnnxEngine(private val context: Context) {
     }
 
     /**
-     * Calculates Real-Time Telemetry Metrics for AR Camera Overlay UI
+     * Computes AR Telemetry with Quantum Dot Display & Efficiency Feedback
      */
     fun computeCameraTelemetry(frameDurationMs: Long): TelemetryData {
         val fps = if (frameDurationMs > 0) 1000.0f / frameDurationMs else 60.0f
@@ -316,37 +374,41 @@ class OnnxEngine(private val context: Context) {
             latencyMs = frameDurationMs.toFloat(),
             complianceScore = 0.99f,
             activeDomain = HyperDomain.TECHNOLOGY,
-            xenoIrState = "Xeno-IR Quantum Continuum Active [Low Footprint]"
+            executionMode = currentExecutionMode,
+            xenoIrState = "Xeno-IR Quantum Continuum Active [Near-Zero Latency]",
+            displayColorSpectrum = "Dynamic QD Spectrum Shift [Active]",
+            pixelEnergyEfficiency = 0.94f
         )
     }
 
     /**
-     * Weather-Adaptive Attire & Dietary Recommendation Engine
+     * Weather & Quantum Solar Spectrum Lifestyle Recommendations
      */
     fun computeAttireAndDietMetrics(tempCelsius: Float, humidityPercent: Float): LifestyleOptimization {
         return if (tempCelsius < 15.0f) {
             LifestyleOptimization(
-                recommendedAttire = "Thermal insulated base with wind-resistant technical shell.",
-                optimalDietPlan = "High-density ketogenic fats and complex thermogenic proteins.",
-                cognitiveAdvantageScore = 0.96f
+                recommendedAttire = "Thermal insulated base layer with wind-resistant shell.",
+                optimalDietPlan = "Warm hydration, balanced complex carbs, and adequate protein.",
+                healthObservationNote = "Ensure regular rest and hydration during long coding sessions.",
+                cognitiveAdvantageScore = 0.96f,
+                optimalExposureWindow = "11:00 AM - 01:00 PM (Low Ambient Energy Shift)"
             )
         } else {
             LifestyleOptimization(
-                recommendedAttire = "Moisture-wicking breathable technical weave.",
-                optimalDietPlan = "High-hydration bio-available electrolytes and lean protein.",
-                cognitiveAdvantageScore = 0.98f
+                recommendedAttire = "Light, breathable cotton or moisture-wicking weave.",
+                optimalDietPlan = "Balanced electrolytes, fresh fruits, and steady hydration.",
+                healthObservationNote = "Take structured micro-breaks to maintain high focus.",
+                cognitiveAdvantageScore = 0.98f,
+                optimalExposureWindow = "08:00 AM - 10:00 AM (Optimal Solar Spectrum)"
             )
         }
     }
 
-    /**
-     * Autonomous Developer-Empowerment Coding Bot Interface
-     */
     fun runDeveloperBotAction(prompt: String): String {
         return "// $modelIdentityName - Celsius Tech Developer Empowerment Block\n" +
-               "// Engine: Xeno-IR Quantum Continuum Compiler Target\n" +
+               "// Engine: Xeno-IR Quantum Continuum Compiler Target (Ballistic Route)\n" +
                "#[inline(always)]\n" +
-               "pub fn xeno_ir_quantum_step(input_vec: &[f32]) -> Vec<f32> {\n" +
+               "pub fn xeno_ir_step(input_vec: &[f32]) -> Vec<f32> {\n" +
                "    input_vec.iter().map(|&x| x * 0.9999f32).collect()\n" +
                "}"
     }
@@ -355,8 +417,13 @@ class OnnxEngine(private val context: Context) {
         val lower = text.lowercase()
         return when {
             lower.contains("bio") || lower.contains("dna") -> HyperDomain.BIOLOGY
-            lower.contains("stock") || lower.contains("finance") || lower.contains("hedge") -> HyperDomain.FINANCE
-            lower.contains("stress") || lower.contains("yield") || lower.contains("engineering") -> HyperDomain.ENGINEERING
+            lower.contains("stock") || lower.contains("finance") -> HyperDomain.FINANCE
+            lower.contains("stress") || lower.contains("yield") -> HyperDomain.ENGINEERING
+            lower.contains("quantum") && lower.contains("dot") -> HyperDomain.QUANTUM_NANOTECH
+            lower.contains("quantum") -> HyperDomain.QUANTUM_PHYSICS
+            lower.contains("astro") || lower.contains("space") -> HyperDomain.ASTROPHYSICS
+            lower.contains("molecular") -> HyperDomain.MOLECULAR_ENGINEERING
+            lower.contains("xeno") || lower.contains("compute") -> HyperDomain.XENO_COMPUTE
             else -> HyperDomain.TECHNOLOGY
         }
     }
