@@ -19,6 +19,11 @@ android {
     namespace "org.linguistic.assistant"
     compileSdk 34
 
+    // Prevent compression of model binary assets
+    aaptOptions {
+        noCompress 'onnx', 'cql', 'tflite'
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -55,4 +60,8 @@ android {
 
 flutter {
     source '../..'
+}
+
+dependencies {
+    implementation 'com.microsoft.onnxruntime:onnxruntime:1.17.0'
 }
