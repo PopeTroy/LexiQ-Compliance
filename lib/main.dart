@@ -20,8 +20,11 @@ class LexiQApp extends StatelessWidget {
           primary: Color(0xFF00E676),
           surface: Color(0xFF1E1E1E),
         ),
-        cardTheme: CardTheme(
+        // Updated from CardTheme to CardThemeData for Flutter 3.x compatibility
+        cardTheme: CardThemeData(
           color: const Color(0xFF1E1E1E),
+          elevation: 2,
+          margin: const EdgeInsets.all(8),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16.0),
           ),
@@ -39,7 +42,7 @@ class LexiQDashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('LexiQ Grammar Suite'),
+        title: const Text('LexiQ Grammar Suite (Free Edition)'),
         backgroundColor: const Color(0xFF1E1E1E),
         elevation: 0,
         centerTitle: true,
@@ -72,7 +75,7 @@ class LexiQDashboardScreen extends StatelessWidget {
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Offline ONNX model loaded for real-time spellcheck & grammar.',
+                      'Offline ONNX model loaded for real-time physics-aware spellcheck & grammar.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey, height: 1.4),
                     ),
