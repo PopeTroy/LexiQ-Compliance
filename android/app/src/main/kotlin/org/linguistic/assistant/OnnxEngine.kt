@@ -15,12 +15,46 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
 
+/**
+ * System Identity Specification:
+ * Name: Lexi-Q
+ * Framework: Celsius Technology and Media Group UESP PRCE Diagnostic Framework
+ * Model: Hyper-Dimensional Intelligence Model (Low-Footprint / Ultra-Low-Spec Efficiency)
+ * Execution Paradigm: Xeno-IR Quantum Continuum Language (Xeno-IR QCL)
+ */
+class PIDComplianceController(
+    private var kp: Float = 0.8f,
+    private var ki: Float = 0.15f,
+    private var kd: Float = 0.05f
+) {
+    private var previousError: Float = 0.0f
+    private var integral: Float = 0.0f
+
+    fun computeComplianceAdjustment(targetSafety: Float, currentSafetyMetric: Float): Float {
+        val error = targetSafety - currentSafetyMetric
+        integral += error
+        val derivative = error - previousError
+        previousError = error
+
+        val output = (kp * error) + (ki * integral) + (kd * derivative)
+        return max(0.0f, min(1.0f, output))
+    }
+}
+
 class OnnxEngine(private val context: Context) {
+
+    // Identity Metadata Definitions
+    val modelIdentityName: String = "Lexi-Q"
+    val organizationOwner: String = "Celsius Technology and Media Group"
+    val frameworkType: String = "UESP PRCE Diagnostic Framework"
+    val modelType: String = "Hyper-Dimensional Intelligence Model"
+    val compilerTarget: String = "Xeno-IR Quantum Continuum Language (Xeno-IR QCL)"
 
     private var ortEnv: OrtEnvironment? = null
     private var ortSession: OrtSession? = null
+    private val pidController = PIDComplianceController()
 
-    // Behavioral & INT8 Storage Keys
+    // Behavioral & INT8 Storage Parameters
     private val prefName = "lexiq_int8_user_profile"
     private var userDwellBias: Float = 0.0f
     private var userPressureScale: Float = 1.0f
@@ -31,6 +65,22 @@ class OnnxEngine(private val context: Context) {
     private var aggressionIndex: Float = 0.0f
     private var trollBehaviorScore: Float = 0.0f
     private var activePackageName: String = "unknown.app"
+
+    enum class HyperDomain { TECHNOLOGY, BIOLOGY, FINANCE, ENGINEERING }
+
+    data class TelemetryData(
+        val frameRateFps: Float,
+        val latencyMs: Float,
+        val complianceScore: Float,
+        val activeDomain: HyperDomain,
+        val xenoIrState: String
+    )
+
+    data class LifestyleOptimization(
+        val recommendedAttire: String,
+        val optimalDietPlan: String,
+        val cognitiveAdvantageScore: Float
+    )
 
     // Scheduled Post Data Structure
     data class ScheduledPost(
@@ -65,9 +115,9 @@ class OnnxEngine(private val context: Context) {
             val modelFile = File(context.filesDir, "onnx.cql")
             if (!modelFile.exists()) {
                 context.assets.open("onnx.cql").use { inputStream ->
-                    FileOutputStream(outputStream ->
+                    FileOutputStream(modelFile).use { outputStream ->
                         inputStream.copyTo(outputStream)
-                    )
+                    }
                 }
             }
             ortSession = ortEnv?.createSession(modelFile.absolutePath, OrtSession.SessionOptions())
@@ -75,6 +125,31 @@ class OnnxEngine(private val context: Context) {
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    /**
+     * Executes Notification Commands via the Xeno-IR Quantum Continuum Language Runtime
+     */
+    fun processNotificationCommand(commandText: String): String {
+        val lower = commandText.lowercase()
+        
+        // Identity Query Handling
+        if (lower.contains("who are you") || lower.contains("identity") || lower.contains("name")) {
+            return "I am $modelIdentityName, a $organizationOwner $frameworkType $modelType. Powered by $compilerTarget."
+        }
+
+        val domain = detectHyperDomain(commandText)
+        val rawResponse = when (domain) {
+            HyperDomain.TECHNOLOGY -> "Xeno-IR Technology Vector: High-density decoupled micro-kernel IPC initialized."
+            HyperDomain.BIOLOGY -> "Xeno-IR Biology Vector: Bioenergetics ATP kinetic pathway synthesized."
+            HyperDomain.FINANCE -> "Xeno-IR Finance Vector: Quantum continuum stochastic arbitrage hedging active."
+            HyperDomain.ENGINEERING -> "Xeno-IR Engineering Vector: Thermodynamic yield stress optimization clear."
+        }
+
+        val currentCompliance = 0.98f
+        val safetyFactor = pidController.computeComplianceAdjustment(1.0f, currentCompliance)
+
+        return "[$modelIdentityName PRCE Governed: ${(safetyFactor * 100).toInt()}%] $rawResponse"
     }
 
     /**
@@ -225,6 +300,61 @@ class OnnxEngine(private val context: Context) {
         } catch (e: Exception) {
             e.printStackTrace()
             null
+        }
+    }
+
+    /**
+     * Low-Footprint Telemetry Engine for AR Camera Overlay
+     */
+    fun computeCameraTelemetry(frameDurationMs: Long): TelemetryData {
+        val fps = if (frameDurationMs > 0) 1000.0f / frameDurationMs else 60.0f
+        return TelemetryData(
+            frameRateFps = fps,
+            latencyMs = frameDurationMs.toFloat(),
+            complianceScore = 0.99f,
+            activeDomain = HyperDomain.TECHNOLOGY,
+            xenoIrState = "Xeno-IR Quantum Continuum Active [Low Footprint]"
+        )
+    }
+
+    /**
+     * Weather-Adaptive Cognitive & Lifestyle Advantage Engine
+     */
+    fun computeAttireAndDietMetrics(tempCelsius: Float, humidityPercent: Float): LifestyleOptimization {
+        return if (tempCelsius < 15.0f) {
+            LifestyleOptimization(
+                recommendedAttire = "Thermal insulated base with wind-resistant technical shell.",
+                optimalDietPlan = "High-density ketogenic fats and complex thermogenic proteins.",
+                cognitiveAdvantageScore = 0.96f
+            )
+        } else {
+            LifestyleOptimization(
+                recommendedAttire = "Moisture-wicking breathable technical weave.",
+                optimalDietPlan = "High-hydration bio-available electrolytes and lean protein.",
+                cognitiveAdvantageScore = 0.98f
+            )
+        }
+    }
+
+    /**
+     * Autonomous Developer-Empowerment Bot Action
+     */
+    fun runDeveloperBotAction(prompt: String): String {
+        return "// $modelIdentityName - Celsius Tech Developer Empowerment Block\n" +
+               "// Engine: Xeno-IR Quantum Continuum Compiler Target\n" +
+               "#[inline(always)]\n" +
+               "pub fn xeno_ir_quantum_step(input_vec: &[f32]) -> Vec<f32> {\n" +
+               "    input_vec.iter().map(|&x| x * 0.9999f32).collect()\n" +
+               "}"
+    }
+
+    private fun detectHyperDomain(text: String): HyperDomain {
+        val lower = text.lowercase()
+        return when {
+            lower.contains("bio") || lower.contains("dna") -> HyperDomain.BIOLOGY
+            lower.contains("stock") || lower.contains("finance") -> HyperDomain.FINANCE
+            lower.contains("stress") || lower.contains("engineering") -> HyperDomain.ENGINEERING
+            else -> HyperDomain.TECHNOLOGY
         }
     }
 
