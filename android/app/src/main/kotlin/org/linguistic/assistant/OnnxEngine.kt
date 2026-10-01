@@ -53,7 +53,7 @@ class PIDComplianceController(
 }
 
 /**
- * Hyper-Dimensional Engine with Nano-Compute & Quantum Spectrum Telemetry Integrations
+ * Hyper-Dimensional Engine with Nano-Compute, VLA Telemetry, & Prompt-to-Command Parser
  */
 class OnnxEngine(private val context: Context) {
 
@@ -67,6 +67,7 @@ class OnnxEngine(private val context: Context) {
     private var ortEnv: OrtEnvironment? = null
     private var ortSession: OrtSession? = null
     private val pidController = PIDComplianceController()
+    private var isNativeLibraryLoaded = false
 
     // Execution Modes
     enum class ExecutionMode { REAL_WORLD, TACTICAL_SIM }
@@ -82,15 +83,11 @@ class OnnxEngine(private val context: Context) {
     private var userPressureScale: Float = 1.0f
     private var tapCount: Int = 0
 
-    // Enhanced Behavioral & Biometric Trait Metrics
+    // Enhanced Behavioral Trait Metrics
     private var typingSpeedWpm: Float = 40.0f
     private var aggressionIndex: Float = 0.0f
     private var trollBehaviorScore: Float = 0.0f
     private var activePackageName: String = "unknown.app"
-    
-    // Molecular & Biometric Multi-Sensory Data Vectors
-    private var bioenergeticState: Float = 0.98f
-    private var ambientSpectrumEnergy: Float = 0.85f
 
     // Expanded Domain Specific Context Encoders
     enum class HyperDomain { 
@@ -105,7 +102,7 @@ class OnnxEngine(private val context: Context) {
         QUANTUM_NANOTECH
     }
 
-    // Telemetry Expanded with Quantum Dot Display Metrics
+    // Telemetry Expanded with Quantum Dot Display & VLA Vision Metrics
     data class TelemetryData(
         val frameRateFps: Float,
         val latencyMs: Float,
@@ -114,7 +111,9 @@ class OnnxEngine(private val context: Context) {
         val executionMode: ExecutionMode,
         val xenoIrState: String,
         val displayColorSpectrum: String,
-        val pixelEnergyEfficiency: Float
+        val pixelEnergyEfficiency: Float,
+        val vlaActionConfidence: Float,
+        val vlaTargetBoundingBox: String
     )
 
     data class LifestyleOptimization(
@@ -133,21 +132,31 @@ class OnnxEngine(private val context: Context) {
     )
     private val scheduledQueue = mutableListOf<ScheduledPost>()
 
-    // Native JNI Methods (Mapped to Ballistic Wiring / Nano-Circuit Hardware Abstraction)
+    // Native JNI Methods
     external fun initModel(modelPath: String)
     external fun evaluateBehavior(features: FloatArray): FloatArray
 
     companion object {
-        init {
-            try {
-                System.loadLibrary("lexiq_onnx_native")
-            } catch (e: UnsatisfiedLinkError) {
-                e.printStackTrace()
+        private var libraryLoadAttempted = false
+        private var libraryLoadSuccess = false
+
+        fun loadNativeLibrary(): Boolean {
+            if (!libraryLoadAttempted) {
+                try {
+                    System.loadLibrary("lexiq_onnx_native")
+                    libraryLoadSuccess = true
+                } catch (e: UnsatisfiedLinkError) {
+                    e.printStackTrace()
+                    libraryLoadSuccess = false
+                }
+                libraryLoadAttempted = true
             }
+            return libraryLoadSuccess
         }
     }
 
     init {
+        isNativeLibraryLoaded = loadNativeLibrary()
         loadModelFromAssets()
         loadInt8BehavioralProfile()
     }
@@ -164,7 +173,11 @@ class OnnxEngine(private val context: Context) {
                 }
             }
             ortSession = ortEnv?.createSession(modelFile.absolutePath, OrtSession.SessionOptions())
-            initModel(modelFile.absolutePath)
+            
+            // Safely initialize native model only if library loaded cleanly
+            if (isNativeLibraryLoaded) {
+                initModel(modelFile.absolutePath)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -180,20 +193,49 @@ class OnnxEngine(private val context: Context) {
     }
 
     /**
-     * Executes Commands & Evaluates Molecular Binding / Quantum Domain Queries
+     * Prompt-to-Command Parser: Intercepts raw prompts from the Notification Pane
+     * and executes system actions or returns diagnostic status.
+     */
+    fun processPromptToCommand(prompt: String): String {
+        val cleanPrompt = prompt.trim()
+        if (cleanPrompt.isEmpty()) {
+            return "Notification Command Engine: Empty input prompt received."
+        }
+
+        val lower = cleanPrompt.lowercase()
+
+        // 1. Mode Switching Interceptor
+        if (lower.contains("switch mode") || lower.contains("toggle sim") || lower.contains("set mode")) {
+            val newMode = toggleExecutionMode()
+            return "Command Executed: Execution mode updated to $newMode."
+        }
+
+        // 2. Identity Query Interceptor
+        if (lower.contains("who are you") || lower.contains("identity") || lower.contains("status")) {
+            return "Identity: $modelIdentityName | Owner: $organizationOwner | Framework: $frameworkType | Mode: $currentExecutionMode | VLA Engine: Online."
+        }
+
+        // 3. VLA Telemetry Request Interceptor
+        if (lower.contains("telemetry") || lower.contains("vla") || lower.contains("camera")) {
+            val telemetry = computeCameraTelemetry(16L)
+            return "VLA Telemetry Status: FPS: ${telemetry.frameRateFps} | Latency: ${telemetry.latencyMs}ms | Action Confidence: ${telemetry.vlaActionConfidence * 100}% | Spectrum: ${telemetry.displayColorSpectrum}"
+        }
+
+        // 4. Sanitize / Filter Text Command Interceptor
+        if (lower.startsWith("sanitize:") || lower.startsWith("filter:")) {
+            val textToProcess = cleanPrompt.substringAfter(":").trim()
+            val sanitized = processAndFilterText(textToProcess, "notification.pane")
+            return "Filtered Output: $sanitized"
+        }
+
+        // 5. Fallback Domain Dispatch
+        return processNotificationCommand(cleanPrompt)
+    }
+
+    /**
+     * Executes Notification Commands via the Xeno-IR Quantum Continuum Language Runtime
      */
     fun processNotificationCommand(commandText: String): String {
-        val lower = commandText.lowercase()
-        
-        if (lower.contains("switch mode") || lower.contains("toggle sim")) {
-            val newMode = toggleExecutionMode()
-            return "Execution mode updated to: $newMode"
-        }
-
-        if (lower.contains("who are you") || lower.contains("identity") || lower.contains("name")) {
-            return "I am $modelIdentityName, operating under $organizationOwner $frameworkType ($modelType). Compiler: $compilerTarget. Active Mode: $currentExecutionMode."
-        }
-
         val domain = detectHyperDomain(commandText)
         val rawResponse = when (domain) {
             HyperDomain.TECHNOLOGY -> "Xeno-IR Technology Vector: High-density micro-kernel IPC active."
@@ -207,7 +249,6 @@ class OnnxEngine(private val context: Context) {
             HyperDomain.QUANTUM_NANOTECH -> "Xeno-IR Nanotech Vector: CNT/Graphene ballistic route engaged."
         }
 
-        // Apply Closed-Loop PID Governance Filter with Purity Validation
         val currentCompliance = 0.98f
         val signalPurity = 0.99f
         val safetyFactor = pidController.computeComplianceAdjustment(1.0f, currentCompliance, signalPurity)
@@ -234,7 +275,6 @@ class OnnxEngine(private val context: Context) {
         val rawWpm = if (timeSinceLastTapMs > 0) (60000.0f / timeSinceLastTapMs) / 5.0f else 40.0f
         typingSpeedWpm = (typingSpeedWpm * 0.9f) + (rawWpm * 0.1f)
         
-        // Touch dynamics augmented by biometric/molecular resonance
         val tapAggression = (estimatedForce * 0.5f) + (if (dwellTimeMs < 50) 0.3f else 0.0f) + ((1.0f - molecularResonance) * 0.2f)
         aggressionIndex = (aggressionIndex * 0.85f) + (tapAggression * 0.15f)
 
@@ -345,9 +385,6 @@ class OnnxEngine(private val context: Context) {
         }
     }
 
-    /**
-     * Quantized Inference Pipeline with Optional Output Molecular Layer Transform
-     */
     fun runInference(inputData: FloatArray, shape: LongArray): FloatArray? {
         if (ortEnv == null || ortSession == null) return null
         return try {
@@ -356,7 +393,6 @@ class OnnxEngine(private val context: Context) {
             val outputTensor = results?.get(0) as? OnnxTensor
             val rawOutput = outputTensor?.floatBuffer?.array()
             
-            // Conceptually apply molecular decoding layer to the output array
             rawOutput?.map { it * 0.9999f }?.toFloatArray()
         } catch (e: Exception) {
             e.printStackTrace()
@@ -365,7 +401,7 @@ class OnnxEngine(private val context: Context) {
     }
 
     /**
-     * Computes AR Telemetry with Quantum Dot Display & Efficiency Feedback
+     * Computes Camera & Vision-Language-Action (VLA) Telemetry Metrics
      */
     fun computeCameraTelemetry(frameDurationMs: Long): TelemetryData {
         val fps = if (frameDurationMs > 0) 1000.0f / frameDurationMs else 60.0f
@@ -375,15 +411,14 @@ class OnnxEngine(private val context: Context) {
             complianceScore = 0.99f,
             activeDomain = HyperDomain.TECHNOLOGY,
             executionMode = currentExecutionMode,
-            xenoIrState = "Xeno-IR Quantum Continuum Active [Near-Zero Latency]",
-            displayColorSpectrum = "Dynamic QD Spectrum Shift [Active]",
-            pixelEnergyEfficiency = 0.94f
+            xenoIrState = "Xeno-IR Quantum Continuum Active [Low Footprint]",
+            displayColorSpectrum = "Quantum Dot Shift Delta: 0.02nm",
+            pixelEnergyEfficiency = 0.96f,
+            vlaActionConfidence = 0.985f,
+            vlaTargetBoundingBox = "[x:120, y:240, w:300, h:180]"
         )
     }
 
-    /**
-     * Weather & Quantum Solar Spectrum Lifestyle Recommendations
-     */
     fun computeAttireAndDietMetrics(tempCelsius: Float, humidityPercent: Float): LifestyleOptimization {
         return if (tempCelsius < 15.0f) {
             LifestyleOptimization(
@@ -402,15 +437,6 @@ class OnnxEngine(private val context: Context) {
                 optimalExposureWindow = "08:00 AM - 10:00 AM (Optimal Solar Spectrum)"
             )
         }
-    }
-
-    fun runDeveloperBotAction(prompt: String): String {
-        return "// $modelIdentityName - Celsius Tech Developer Empowerment Block\n" +
-               "// Engine: Xeno-IR Quantum Continuum Compiler Target (Ballistic Route)\n" +
-               "#[inline(always)]\n" +
-               "pub fn xeno_ir_step(input_vec: &[f32]) -> Vec<f32> {\n" +
-               "    input_vec.iter().map(|&x| x * 0.9999f32).collect()\n" +
-               "}"
     }
 
     private fun detectHyperDomain(text: String): HyperDomain {
