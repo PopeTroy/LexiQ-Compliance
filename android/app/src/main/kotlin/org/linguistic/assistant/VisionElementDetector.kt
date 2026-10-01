@@ -38,11 +38,15 @@ class LexiVisionTileService : TileService() {
             tile.state = Tile.STATE_ACTIVE
             tile.label = "Lexi Vision: ON"
             
-            val intent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            // Resolve the launch intent safely via packageManager without needing direct class symbol reference
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 putExtra("ACTION_START_VLA", true)
             }
-            startActivityAndCollapse(intent)
+            
+            if (launchIntent != null) {
+                startActivityAndCollapse(launchIntent)
+            }
         } else {
             tile.state = Tile.STATE_INACTIVE
             tile.label = "Lexi Vision"
@@ -133,7 +137,6 @@ class VisionElementDetector(private val context: Context) {
 
                 val resultObj = JSONObject(contentString)
                 
-                // Get spatial telemetry bounding target from local OnnxEngine
                 val telemetry = onnxEngine.computeCameraTelemetry(16L)
 
                 val elementDef = ElementDefinition(
