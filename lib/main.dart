@@ -49,7 +49,7 @@ class LexiQDashboardScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header Status Card
+            // Status Card
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(24.0),
@@ -62,7 +62,7 @@ class LexiQDashboardScreen extends StatelessWidget {
                     ),
                     SizedBox(height: 12),
                     Text(
-                      'LexiQ Keyboard Service Installed',
+                      'LexiQ Hybrid Engine Active',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
@@ -72,7 +72,7 @@ class LexiQDashboardScreen extends StatelessWidget {
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Activate via Android Settings > System > Languages & Input > On-screen Keyboard',
+                      'Offline ONNX model loaded for real-time spellcheck & grammar.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey, height: 1.4),
                     ),
@@ -82,7 +82,7 @@ class LexiQDashboardScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
 
-            // Engine Capabilities Card
+            // Dual Engine Status
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
@@ -90,7 +90,7 @@ class LexiQDashboardScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Engine Processing Pipeline',
+                      'Engine Architecture',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
@@ -99,15 +99,15 @@ class LexiQDashboardScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     _buildFeatureTile(
-                      icon: Icons.memory,
-                      title: 'On-Device Quantized Model',
-                      subtitle: 'Local real-time spell checking & offline CQL parsing via onnx.cql engine.',
+                      icon: Icons.offline_bolt_rounded,
+                      title: 'Primary: Offline ONNX Model (onnx.cql)',
+                      subtitle: 'Zero-latency local processing. Runs on-device with quantized execution.',
                     ),
                     const Divider(height: 24, color: Colors.white10),
                     _buildFeatureTile(
                       icon: Icons.cloud_done_rounded,
-                      title: 'NVIDIA NIM Microservices',
-                      subtitle: 'High-precision LLM grammar correction, vision analysis, & semantic refinement.',
+                      title: 'Fallback: NVIDIA NIM Microservices',
+                      subtitle: 'Online LLM enhancement for complex multi-modal & vision tasks.',
                     ),
                   ],
                 ),
@@ -115,7 +115,7 @@ class LexiQDashboardScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
 
-            // Quick Status Pill
+            // Active Status Pill
             Container(
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
               decoration: BoxDecoration(
@@ -125,11 +125,11 @@ class LexiQDashboardScreen extends StatelessWidget {
               ),
               child: Row(
                 children: const [
-                  Icon(Icons.check_circle_outline, color: Color(0xFF00E676)),
+                  Icon(Icons.check_circle, color: Color(0xFF00E676)),
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'All local ONNX models & NIM API credentials loaded.',
+                      'onnx.cql model pre-loaded in android/app/src/main/assets/',
                       style: TextStyle(fontSize: 13, color: Colors.white70),
                     ),
                   ),
