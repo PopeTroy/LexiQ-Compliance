@@ -34,6 +34,14 @@ android {
         targetSdk 34
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
+
+        // Pass exact secret key into Android BuildConfig
+        def nimKey = System.getenv("NVIDIA_API_KEY") ?: project.findProperty("NVIDIA_API_KEY") ?: ""
+        buildConfigField "String", "NVIDIA_API_KEY", "\"${nimKey}\""
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     buildTypes {
