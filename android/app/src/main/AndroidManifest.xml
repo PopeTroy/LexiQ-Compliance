@@ -1,54 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="org.linguistic.assistant">
 
-    <!-- Uses the required placeholder token to satisfy modern Flutter v2 embedding engines -->
-    <application
-        android:label="LexiQ Compliance"
-        android:name="${applicationName}"
-        android:icon="@android:drawable/sym_def_app_icon"
-        android:hardwareAccelerated="true">
-        
-        <!-- Main Application Workspace View Window -->
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:launchMode="singleTop"
-            android:theme="@style/LaunchTheme"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-            android:windowSoftInputMode="adjustResize">
-            
-            <meta-data
-              android:name="io.flutter.embedding.android.NormalTheme"
-              android:resource="@style/NormalTheme" />
-              
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-        </activity>
-
-        <!-- System-wide Background Grammar/Spellcheck Input Service Extension -->
-        <service
-            android:name=".LexiQKeyboardService"
-            android:label="LexiQ Grammar Input"
-            android:permission="android.permission.BIND_INPUT_METHOD"
-            android:exported="true">
-            <meta-data
-                android:name="android.view.im"
-                android:resource="@xml/method" />
-            <intent-filter>
-                <action android:name="android.view.InputMethod" />
-            </intent-filter>
-        </service>
-
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
-    </application>
-</manifest>
-
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="org.linguistic.assistant">
+    <!-- Network Access Permissions for NVIDIA NIM Endpoints -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- RF Telemetry Scanning Permissions -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -63,8 +19,48 @@
     <!-- Device Administrative Lockout Permissions -->
     <uses-permission android:name="android.permission.USES_POLICY_FORCE_LOCK" />
 
-    <application ...>
-        ...
+    <application
+        android:label="LexiQ Compliance"
+        android:name="${applicationName}"
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:hardwareAccelerated="true">
+        
+        <!-- Companion Main Execution Screen -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:windowSoftInputMode="adjustResize">
+            
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+              
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <!-- System-wide Background Keyboard Input Extension Service -->
+        <service
+            android:name=".LexiQKeyboardService"
+            android:label="LexiQ Grammar Input"
+            android:permission="android.permission.BIND_INPUT_METHOD"
+            android:exported="true">
+            <meta-data
+                android:name="android.view.im"
+                android:resource="@xml/method" />
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+        </service>
+
+        <!-- Modern Flutter v2 Embedding Parameter -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
     </application>
 </manifest>
-
