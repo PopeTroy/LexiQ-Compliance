@@ -1,19 +1,16 @@
 package org.linguistic.assistant
 
 import android.content.Context
-import android.graphics.PointF
 import android.content.Intent
-import android.provider.Settings
+import android.graphics.PointF
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.FloatBuffer
-import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sqrt
 
 /**
  * System Identity Specification:
@@ -23,9 +20,9 @@ import kotlin.math.sqrt
  * Execution Paradigm: Xeno-IR Quantum Continuum Language (Xeno-IR QCL)
  */
 class PIDComplianceController(
-    private var kp: Float = 0.8f,
-    private var ki: Float = 0.15f,
-    private var kd: Float = 0.05f
+    private var kp: Float = 0.8f,  // Proportional gain (immediate error)
+    private var ki: Float = 0.15f, // Integral gain (accumulated drift)
+    private var kd: Float = 0.05f  // Derivative gain (rate of change)
 ) {
     private var previousError: Float = 0.0f
     private var integral: Float = 0.0f
@@ -41,6 +38,10 @@ class PIDComplianceController(
     }
 }
 
+/**
+ * Hyper-Dimensional Engine (Technology, Biology, Finance, Engineering)
+ * Runs via LLVM-optimized ONNX runtime with NVIDIA NIM local offline caching.
+ */
 class OnnxEngine(private val context: Context) {
 
     // Identity Metadata Definitions
@@ -66,6 +67,7 @@ class OnnxEngine(private val context: Context) {
     private var trollBehaviorScore: Float = 0.0f
     private var activePackageName: String = "unknown.app"
 
+    // Domain Specific Context Encoders
     enum class HyperDomain { TECHNOLOGY, BIOLOGY, FINANCE, ENGINEERING }
 
     data class TelemetryData(
@@ -146,6 +148,7 @@ class OnnxEngine(private val context: Context) {
             HyperDomain.ENGINEERING -> "Xeno-IR Engineering Vector: Thermodynamic yield stress optimization clear."
         }
 
+        // Apply Closed-Loop PID Governance Filter
         val currentCompliance = 0.98f
         val safetyFactor = pidController.computeComplianceAdjustment(1.0f, currentCompliance)
 
@@ -304,7 +307,7 @@ class OnnxEngine(private val context: Context) {
     }
 
     /**
-     * Low-Footprint Telemetry Engine for AR Camera Overlay
+     * Calculates Real-Time Telemetry Metrics for AR Camera Overlay UI
      */
     fun computeCameraTelemetry(frameDurationMs: Long): TelemetryData {
         val fps = if (frameDurationMs > 0) 1000.0f / frameDurationMs else 60.0f
@@ -318,7 +321,7 @@ class OnnxEngine(private val context: Context) {
     }
 
     /**
-     * Weather-Adaptive Cognitive & Lifestyle Advantage Engine
+     * Weather-Adaptive Attire & Dietary Recommendation Engine
      */
     fun computeAttireAndDietMetrics(tempCelsius: Float, humidityPercent: Float): LifestyleOptimization {
         return if (tempCelsius < 15.0f) {
@@ -337,7 +340,7 @@ class OnnxEngine(private val context: Context) {
     }
 
     /**
-     * Autonomous Developer-Empowerment Bot Action
+     * Autonomous Developer-Empowerment Coding Bot Interface
      */
     fun runDeveloperBotAction(prompt: String): String {
         return "// $modelIdentityName - Celsius Tech Developer Empowerment Block\n" +
@@ -352,8 +355,8 @@ class OnnxEngine(private val context: Context) {
         val lower = text.lowercase()
         return when {
             lower.contains("bio") || lower.contains("dna") -> HyperDomain.BIOLOGY
-            lower.contains("stock") || lower.contains("finance") -> HyperDomain.FINANCE
-            lower.contains("stress") || lower.contains("engineering") -> HyperDomain.ENGINEERING
+            lower.contains("stock") || lower.contains("finance") || lower.contains("hedge") -> HyperDomain.FINANCE
+            lower.contains("stress") || lower.contains("yield") || lower.contains("engineering") -> HyperDomain.ENGINEERING
             else -> HyperDomain.TECHNOLOGY
         }
     }
