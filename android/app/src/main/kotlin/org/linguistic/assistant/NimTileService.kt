@@ -1,7 +1,8 @@
 package org.linguistic.assistant
 
-import android.service.quicksettings.TileService
+import android.content.Intent
 import android.service.quicksettings.Tile
+import android.service.quicksettings.TileService
 
 class NimTileService : TileService() {
 
