@@ -1,4 +1,4 @@
-name: Build LexiQ Mobile Application
+Name: Build LexiQ Mobile Application
 
 on:
   push:
@@ -82,8 +82,7 @@ jobs:
           
           cd "$FLUTTER_DIR"
           flutter build apk --release \
-            --dart-define=NVIDIA_API_KEY="$NVIDIA_API_KEY" \
-            --build-arg=-PNVIDIA_API_KEY="$NVIDIA_API_KEY"
+            --dart-define=NVIDIA_API_KEY="$NVIDIA_API_KEY"
 
       # Upload compiled APK as an Actions run artifact
       - name: Upload APK Artifact
