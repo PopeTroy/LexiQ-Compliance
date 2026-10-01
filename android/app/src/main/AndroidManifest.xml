@@ -71,9 +71,9 @@
 
         <!-- Quick Settings Tile for Quick Shade Activation -->
         <service
-            android:name=".NimTileService"
-            android:icon="@android:drawable/ic_menu_camera"
-            android:label="LexiQ Vision NIM"
+            android:name=".LexiVisionTileService"
+            android:label="Lexi Vision"
+            android:icon="@drawable/ic_lexi_vision"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             android:exported="true">
             <intent-filter>
