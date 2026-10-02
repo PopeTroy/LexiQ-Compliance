@@ -3,6 +3,8 @@ package org.linguistic.assistant
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.util.Base64
@@ -17,11 +19,17 @@ import kotlin.concurrent.thread
  */
 class LexiVisionTileService : TileService() {
 
-    private lateinit var engine: OnnxEngine
+    private var engine: OnnxEngine? = null
 
     override fun onCreate() {
         super.onCreate()
-        engine = OnnxEngine(applicationContext)
+        thread {
+            try {
+                engine = OnnxEngine(applicationContext)
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            }
+        }
     }
 
     override fun onStartListening() {
@@ -31,23 +39,27 @@ class LexiVisionTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        
         val tile = qsTile ?: return
 
-        if (tile.state == Tile.STATE_INACTIVE) {
-            tile.state = Tile.STATE_ACTIVE
-            tile.label = "Lexi Vision: ON"
-            
-            // Resolve the launch intent safely via packageManager without needing direct class symbol reference
-            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                putExtra("ACTION_START_VLA", true)
+        try {
+            if (tile.state == Tile.STATE_INACTIVE) {
+                tile.state = Tile.STATE_ACTIVE
+                tile.label = "Lexi Vision: ON"
+                
+                val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    putExtra("ACTION_START_VLA", true)
+                }
+                
+                if (launchIntent != null) {
+                    startActivityAndCollapse(launchIntent)
+                }
+            } else {
+                tile.state = Tile.STATE_INACTIVE
+                tile.label = "Lexi Vision"
             }
-            
-            if (launchIntent != null) {
-                startActivityAndCollapse(launchIntent)
-            }
-        } else {
+        } catch (e: Exception) {
+            e.printStackTrace()
             tile.state = Tile.STATE_INACTIVE
             tile.label = "Lexi Vision"
         }
@@ -69,9 +81,29 @@ class LexiVisionTileService : TileService() {
  */
 class VisionElementDetector(private val context: Context) {
 
-    private val API_KEY = BuildConfig.NVIDIA_API_KEY
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val API_KEY: String by lazy {
+        try {
+            val field = BuildConfig::class.java.getField("NVIDIA_API_KEY")
+            field.get(null) as? String ?: ""
+        } catch (e: Throwable) {
+            ""
+        }
+    }
+
     private val BASE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-    private val onnxEngine = OnnxEngine(context)
+    private var onnxEngine: OnnxEngine? = null
+
+    init {
+        thread {
+            try {
+                onnxEngine = OnnxEngine(context.applicationContext)
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            }
+        }
+    }
 
     data class ElementDefinition(
         val elementName: String,
@@ -89,6 +121,19 @@ class VisionElementDetector(private val context: Context) {
     ) {
         thread {
             try {
+                if (API_KEY.isBlank()) {
+                    notifyResult(
+                        ElementDefinition(
+                            elementName = "Configuration Missing",
+                            definition = "NVIDIA API key is missing or not declared in BuildConfig.",
+                            detailedDescription = "Ensure NVIDIA_API_KEY is defined in build.gradle or environment variables.",
+                            hazardOrNote = "None"
+                        ),
+                        callback
+                    )
+                    return@thread
+                }
+
                 val outputStream = ByteArrayOutputStream()
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 85, outputStream)
                 val base64Image = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
@@ -130,54 +175,78 @@ class VisionElementDetector(private val context: Context) {
 
                 val responseStr = executeHttpRequest(BASE_URL, payload)
                 val jsonResponse = JSONObject(responseStr)
-                val contentString = jsonResponse.getJSONArray("choices")
-                    .getJSONObject(0)
+                
+                val choices = jsonResponse.optJSONArray("choices")
+                if (choices == null || choices.length() == 0) {
+                    notifyResult(
+                        ElementDefinition(
+                            elementName = "Analysis Unavailable",
+                            definition = "No visual elements detected under coordinates.",
+                            detailedDescription = "NVIDIA NIM response returned an empty inference result.",
+                            hazardOrNote = "None"
+                        ),
+                        callback
+                    )
+                    return@thread
+                }
+
+                val contentString = choices.getJSONObject(0)
                     .getJSONObject("message")
                     .getString("content")
 
                 val resultObj = JSONObject(contentString)
-                
-                val telemetry = onnxEngine.computeCameraTelemetry(16L)
+                val telemetryTarget = onnxEngine?.computeCameraTelemetry(16L)?.vlaTargetBoundingBox ?: "[x:0, y:0, w:0, h:0]"
 
                 val elementDef = ElementDefinition(
                     elementName = resultObj.optString("element_name", "Unknown Feature"),
                     definition = resultObj.optString("definition", "No definition available."),
                     detailedDescription = resultObj.optString("description", "No details returned."),
                     hazardOrNote = resultObj.optString("safety_note", "None"),
-                    vlaBoundingTarget = telemetry.vlaTargetBoundingBox
+                    vlaBoundingTarget = telemetryTarget
                 )
 
-                callback(elementDef)
+                notifyResult(elementDef, callback)
 
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
-                callback(
+                notifyResult(
                     ElementDefinition(
                         elementName = "Detection Error",
                         definition = "Could not parse element at tap target.",
-                        detailedDescription = "Check network status or API key configuration in BuildConfig.",
+                        detailedDescription = "Check network status or API key configuration.",
                         hazardOrNote = "None"
-                    )
+                    ),
+                    callback
                 )
             }
         }
     }
 
+    private fun notifyResult(result: ElementDefinition, callback: (ElementDefinition) -> Unit) {
+        mainHandler.post {
+            callback(result)
+        }
+    }
+
     private fun executeHttpRequest(urlString: String, jsonBody: JSONObject): String {
-        val url = URL(urlString)
-        val conn = url.openConnection() as HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.setRequestProperty("Content-Type", "application/json")
-        conn.setRequestProperty("Authorization", "Bearer $API_KEY")
-        conn.connectTimeout = 10000
-        conn.readTimeout = 10000
-        conn.doOutput = true
+        return try {
+            val url = URL(urlString)
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("Authorization", "Bearer $API_KEY")
+            conn.connectTimeout = 10000
+            conn.readTimeout = 10000
+            conn.doOutput = true
 
-        conn.outputStream.use { it.write(jsonBody.toString().toByteArray()) }
+            conn.outputStream.use { it.write(jsonBody.toString().toByteArray()) }
 
-        return if (conn.responseCode == 200) {
-            conn.inputStream.bufferedReader().use { it.readText() }
-        } else {
+            if (conn.responseCode == 200) {
+                conn.inputStream.bufferedReader().use { it.readText() }
+            } else {
+                "{}"
+            }
+        } catch (e: Throwable) {
             "{}"
         }
     }
