@@ -145,7 +145,7 @@ class OnnxEngine(private val context: Context) {
                 try {
                     System.loadLibrary("lexiq_onnx_native")
                     libraryLoadSuccess = true
-                } catch (e: UnsatisfiedLinkError) {
+                } catch (e: Throwable) {
                     e.printStackTrace()
                     libraryLoadSuccess = false
                 }
@@ -157,29 +157,42 @@ class OnnxEngine(private val context: Context) {
 
     init {
         isNativeLibraryLoaded = loadNativeLibrary()
-        loadModelFromAssets()
+        
+        try {
+            loadModelFromAssets()
+        } catch (e: Throwable) {
+            e.printStackTrace()
+        }
+        
         loadInt8BehavioralProfile()
     }
 
     private fun loadModelFromAssets() {
-        try {
-            ortEnv = OrtEnvironment.getEnvironment()
-            val modelFile = File(context.filesDir, "onnx.cql")
-            if (!modelFile.exists()) {
+        val modelFile = File(context.filesDir, "onnx.cql")
+        if (!modelFile.exists()) {
+            val assetList = context.assets.list("") ?: arrayOf()
+            if (assetList.contains("onnx.cql")) {
                 context.assets.open("onnx.cql").use { inputStream ->
                     FileOutputStream(modelFile).use { outputStream ->
                         inputStream.copyTo(outputStream)
                     }
                 }
             }
-            ortSession = ortEnv?.createSession(modelFile.absolutePath, OrtSession.SessionOptions())
-            
-            // Safely initialize native model only if library loaded cleanly
-            if (isNativeLibraryLoaded) {
-                initModel(modelFile.absolutePath)
+        }
+
+        if (modelFile.exists()) {
+            try {
+                ortEnv = OrtEnvironment.getEnvironment()
+                ortSession = ortEnv?.createSession(modelFile.absolutePath, OrtSession.SessionOptions())
+                
+                // Safely initialize native model only if library loaded cleanly
+                if (isNativeLibraryLoaded) {
+                    initModel(modelFile.absolutePath)
+                }
+            } catch (e: Throwable) {
+                ortEnv = null
+                ortSession = null
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
