@@ -27,6 +27,7 @@ android {
 
         buildConfigField("boolean", "INFORMATIONAL_ADVISORY_ONLY", "true")
         buildConfigField("String", "COMPLIANCE_MODE", "\"ON_DEVICE_FIRST_HYBRID\"")
+        buildConfigField("String", "BUILD_GOVERNANCE_TIER", "\"TIER_0_COSMOGENESIS\"")
 
         externalNativeBuild {
             cmake {
@@ -54,25 +55,45 @@ android {
         }
     }
 
-    androidResources {
-        noCompress += ["onnx", "cql", "txt", "json", "tflite"]
+    packagingOptions {
+        resources {
+            noCompress += ["onnx", "cql", "txt", "json", "tflite", "bin", "param", "model"]
+        }
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
+    signingConfigs {
+        debug {
+            // Uses Android's default debug keystore unless overridden
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled = false
             shrinkResources = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             signingConfig = signingConfigs.debug
         }
         releaseML {
             initWith(buildTypes.release)
             debuggable = true
+            buildConfigField("boolean", "ENABLE_ML_TELEMETRY", "true")
         }
-    }
-
-    packaging {
-        jniLibs {
-            useLegacyPackaging = true
+        mlProfile {
+            initWith(buildTypes.release)
+            debuggable = false
+            buildConfigField("boolean", "ENABLE_ML_TELEMETRY", "true")
+        }
+        mlDebug {
+            initWith(buildTypes.debug)
+            debuggable = true
+            buildConfigField("boolean", "ENABLE_ML_TELEMETRY", "true")
         }
     }
 }
@@ -84,5 +105,5 @@ flutter {
 dependencies {
     implementation "androidx.core:core-ktx:1.13.1"
     implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.7.0"
-    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.19.2"
+    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.31.1"
 }
