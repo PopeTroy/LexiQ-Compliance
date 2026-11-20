@@ -70,6 +70,9 @@ class OnnxEngine(private val context: Context) {
     private val pidController = PIDComplianceController()
     private var isNativeLibraryLoaded = false
 
+    @Volatile
+    private var isInitialized: Boolean = false
+
     // Free Tier 1-3 Intelligence Scale (Open & Unrestricted)
     enum class IntelligenceTier(
         val level: Int,
@@ -133,6 +136,11 @@ class OnnxEngine(private val context: Context) {
         val intelligenceTier: IntelligenceTier = IntelligenceTier.TIER_3_HIGH_DIMENSIONAL_INTELLIGENCE
     )
 
+    data class CameraTelemetry(
+        val vlaTargetBoundingBox: String,
+        val inferenceLatencyMs: Float
+    )
+
     data class LifestyleOptimization(
         val recommendedAttire: String,
         val optimalDietPlan: String,
@@ -150,8 +158,10 @@ class OnnxEngine(private val context: Context) {
     private val scheduledQueue = mutableListOf<ScheduledPost>()
 
     // Native JNI Methods
-    external fun initModel(modelPath: String)
-    external fun evaluateBehavior(features: FloatArray): FloatArray
+    external fun initModel(modelPath: String): Boolean
+    external fun destroyModel()
+    external fun evaluateBehavior(features: FloatArray): FloatArray?
+    external fun evaluateBehaviorInt8(quantizedFeatures: ByteArray): ByteArray?
 
     companion object {
         private var libraryLoadAttempted = false
@@ -160,11 +170,16 @@ class OnnxEngine(private val context: Context) {
         fun loadNativeLibrary(): Boolean {
             if (!libraryLoadAttempted) {
                 try {
-                    System.loadLibrary("lexiq_onnx_native")
+                    System.loadLibrary("lexiq_onnx_security")
                     libraryLoadSuccess = true
-                } catch (e: Throwable) {
-                    e.printStackTrace()
-                    libraryLoadSuccess = false
+                } catch (_: Throwable) {
+                    try {
+                        System.loadLibrary("lexiq_onnx_native")
+                        libraryLoadSuccess = true
+                    } catch (e: Throwable) {
+                        e.printStackTrace()
+                        libraryLoadSuccess = false
+                    }
                 }
                 libraryLoadAttempted = true
             }
@@ -226,36 +241,94 @@ class OnnxEngine(private val context: Context) {
         }
     }
 
-    private fun loadModelFromAssets() {
-        val modelFile = File(context.filesDir, "onnx.cql")
-        if (!modelFile.exists()) {
-            val assetList = context.assets.list("") ?: arrayOf()
-            if (assetList.contains("onnx.cql")) {
-                context.assets.open("onnx.cql").use { inputStream ->
-                    FileOutputStream(modelFile).use { outputStream ->
+    fun loadModelFromAssets(assetName: String = "model_int8.onnx"): Boolean {
+        val assetList = context.assets.list("") ?: arrayOf()
+        val resolvedAssetName = when {
+            assetList.contains(assetName) -> assetName
+            assetList.contains("onnx.cql") -> "onnx.cql"
+            else -> assetName
+        }
+
+        val outFile = File(File(context.filesDir, "onnx_models"), resolvedAssetName).apply {
+            parentFile?.mkdirs()
+        }
+
+        if ((!outFile.exists() || outFile.length() == 0L) && assetList.contains(resolvedAssetName)) {
+            try {
+                context.assets.open(resolvedAssetName).use { inputStream ->
+                    FileOutputStream(outFile).use { outputStream ->
                         inputStream.copyTo(outputStream)
                     }
                 }
+            } catch (e: Throwable) {
+                e.printStackTrace()
             }
         }
 
-        if (modelFile.exists()) {
-            try {
-                ortEnv = OrtEnvironment.getEnvironment()
-                ortSession = ortEnv?.createSession(modelFile.absolutePath, OrtSession.SessionOptions())
+        if (!outFile.exists() || outFile.length() == 0L) {
+            isInitialized = false
+            return false
+        }
 
-                // Safely initialize native model only if library loaded cleanly
-                if (isNativeLibraryLoaded) {
-                    try {
-                        initModel(modelFile.absolutePath)
-                    } catch (e: Throwable) {
-                        e.printStackTrace()
-                    }
+        var loaded = false
+        try {
+            ortEnv = OrtEnvironment.getEnvironment()
+            ortSession = ortEnv?.createSession(outFile.absolutePath, OrtSession.SessionOptions())
+            if (ortSession != null) {
+                loaded = true
+            }
+        } catch (_: Throwable) {
+            ortEnv = null
+            ortSession = null
+        }
+
+        if (isNativeLibraryLoaded) {
+            try {
+                if (initModel(outFile.absolutePath)) {
+                    loaded = true
                 }
             } catch (e: Throwable) {
-                ortEnv = null
-                ortSession = null
+                e.printStackTrace()
             }
+        }
+
+        isInitialized = loaded
+        return loaded
+    }
+
+    fun evaluateBehaviorSafe(features: FloatArray): FloatArray {
+        if (!isInitialized || features.isEmpty()) {
+            return FloatArray(0)
+        }
+        return try {
+            evaluateBehavior(features) ?: FloatArray(0)
+        } catch (_: Throwable) {
+            FloatArray(0)
+        }
+    }
+
+    fun evaluateBehaviorInt8Safe(quantizedFeatures: ByteArray): ByteArray {
+        if (!isInitialized || quantizedFeatures.isEmpty()) {
+            return ByteArray(0)
+        }
+        return try {
+            evaluateBehaviorInt8(quantizedFeatures) ?: ByteArray(0)
+        } catch (_: Throwable) {
+            ByteArray(0)
+        }
+    }
+
+    fun release() {
+        isInitialized = false
+        try {
+            destroyModel()
+        } catch (_: Throwable) {
+        }
+        try {
+            ortSession?.close()
+        } catch (_: Throwable) {
+        } finally {
+            ortSession = null
         }
     }
 
@@ -511,6 +584,26 @@ class OnnxEngine(private val context: Context) {
             vlaActionConfidence = 0.985f,
             vlaTargetBoundingBox = "[x:120, y:240, w:300, h:180]",
             intelligenceTier = currentIntelligenceTier
+        )
+    }
+
+    fun computeCameraBoundingBox(frameDeltaMs: Long): CameraTelemetry {
+        val sampleFeatures = floatArrayOf(
+            frameDeltaMs.toFloat().coerceAtLeast(1f),
+            16f,
+            0.5f,
+            0.5f,
+            0.0f
+        )
+        val embedding = evaluateBehaviorSafe(sampleFeatures)
+        val box = if (embedding.size >= 4) {
+            "[x:${"%.2f".format(embedding[0])}, y:${"%.2f".format(embedding[1])}, w:${"%.2f".format(embedding[2])}, h:${"%.2f".format(embedding[3])}]"
+        } else {
+            "[x:0.25, y:0.25, w:0.50, h:0.50]"
+        }
+        return CameraTelemetry(
+            vlaTargetBoundingBox = box,
+            inferenceLatencyMs = frameDeltaMs.toFloat()
         )
     }
 
