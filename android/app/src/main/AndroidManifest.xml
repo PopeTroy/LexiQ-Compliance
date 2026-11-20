@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="org.linguistic.assistant">
 
-    <!-- Network Access Permissions for NVIDIA NIM Endpoints -->
+    <!-- Network Access Permissions for NVIDIA NIM & Model Artifact Downloads -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
@@ -19,17 +19,19 @@
     <!-- Device Administrative Lockout Permissions -->
     <uses-permission android:name="android.permission.USES_POLICY_FORCE_LOCK" />
 
-    <!-- System Notification Shade & Local Camera Telemetry Permissions -->
+    <!-- System Notification Shade, Audio & Local Camera Telemetry Permissions -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
         android:label="LexiQ Compliance"
         android:name="${applicationName}"
         android:icon="@android:drawable/sym_def_app_icon"
         android:hardwareAccelerated="true">
-        
+
         <!-- Companion Main Execution Screen -->
         <activity
             android:name=".MainActivity"
@@ -38,14 +40,14 @@
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:windowSoftInputMode="adjustResize">
-            
+
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
-              
+
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
@@ -64,10 +66,22 @@
         </service>
 
         <!-- Interactive Notification Listener/Controller Service -->
-        <service 
+        <service
             android:name=".NimNotificationService"
             android:exported="false"
-            android:foregroundServiceType="shortService" />
+            android:foregroundServiceType="shortService|dataSync" />
+
+        <!-- Quick Settings Tile for Local NIM Shade Activation -->
+        <service
+            android:name=".NimTileService"
+            android:label="LexiQ Local NIM"
+            android:icon="@drawable/ic_lexi_vision"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <!-- Quick Settings Tile for Quick Shade Activation -->
         <service
@@ -82,8 +96,8 @@
         </service>
 
         <!-- Broadcast Receiver for Inline Notification Drawer Replies -->
-        <receiver 
-            android:name=".NimShadeReplyReceiver" 
+        <receiver
+            android:name=".NimShadeReplyReceiver"
             android:exported="false" />
 
         <!-- Modern Flutter v2 Embedding Parameter -->
