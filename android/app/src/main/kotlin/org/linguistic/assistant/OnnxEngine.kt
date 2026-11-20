@@ -33,8 +33,8 @@ class PIDComplianceController(
      * target safety thresholds, and molecular data purity limits.
      */
     fun computeComplianceAdjustment(
-        targetSafety: Float, 
-        currentSafetyMetric: Float, 
+        targetSafety: Float,
+        currentSafetyMetric: Float,
         signalPurity: Float = 1.0f
     ): Float {
         // Safe Mode fallback if signal integrity falls below required purity standards
@@ -53,7 +53,8 @@ class PIDComplianceController(
 }
 
 /**
- * Hyper-Dimensional Engine with Nano-Compute, VLA Telemetry, & Prompt-to-Command Parser
+ * Hyper-Dimensional Engine with Nano-Compute, VLA Telemetry, Prompt-to-Command Parser,
+ * and Free Tier 1-3 Intelligence Scaling.
  */
 class OnnxEngine(private val context: Context) {
 
@@ -68,6 +69,21 @@ class OnnxEngine(private val context: Context) {
     private var ortSession: OrtSession? = null
     private val pidController = PIDComplianceController()
     private var isNativeLibraryLoaded = false
+
+    // Free Tier 1-3 Intelligence Scale (Open & Unrestricted)
+    enum class IntelligenceTier(
+        val level: Int,
+        val label: String,
+        val contextWindow: Int
+    ) {
+        TIER_1_LOW_VERSION_AI(1, "Low Version AI", 2048),
+        TIER_2_SUPER_INTELLIGENCE(2, "Super Intelligence", 16384),
+        TIER_3_HIGH_DIMENSIONAL_INTELLIGENCE(3, "High Dimensional Intelligence", 65536)
+    }
+
+    private val tierPrefName = "lexiq_free_tier_config"
+    var currentIntelligenceTier: IntelligenceTier = IntelligenceTier.TIER_3_HIGH_DIMENSIONAL_INTELLIGENCE
+        private set
 
     // Execution Modes
     enum class ExecutionMode { REAL_WORLD, TACTICAL_SIM }
@@ -90,19 +106,19 @@ class OnnxEngine(private val context: Context) {
     private var activePackageName: String = "unknown.app"
 
     // Expanded Domain Specific Context Encoders
-    enum class HyperDomain { 
-        TECHNOLOGY, 
-        BIOLOGY, 
-        FINANCE, 
-        ENGINEERING, 
-        QUANTUM_PHYSICS, 
-        ASTROPHYSICS, 
+    enum class HyperDomain {
+        TECHNOLOGY,
+        BIOLOGY,
+        FINANCE,
+        ENGINEERING,
+        QUANTUM_PHYSICS,
+        ASTROPHYSICS,
         XENO_COMPUTE,
         MOLECULAR_ENGINEERING,
         QUANTUM_NANOTECH
     }
 
-    // Telemetry Expanded with Quantum Dot Display & VLA Vision Metrics
+    // Telemetry Expanded with Quantum Dot Display, VLA Vision, & Intelligence Tier Metrics
     data class TelemetryData(
         val frameRateFps: Float,
         val latencyMs: Float,
@@ -113,7 +129,8 @@ class OnnxEngine(private val context: Context) {
         val displayColorSpectrum: String,
         val pixelEnergyEfficiency: Float,
         val vlaActionConfidence: Float,
-        val vlaTargetBoundingBox: String
+        val vlaTargetBoundingBox: String,
+        val intelligenceTier: IntelligenceTier = IntelligenceTier.TIER_3_HIGH_DIMENSIONAL_INTELLIGENCE
     )
 
     data class LifestyleOptimization(
@@ -156,15 +173,57 @@ class OnnxEngine(private val context: Context) {
     }
 
     init {
+        loadSavedIntelligenceTier()
         isNativeLibraryLoaded = loadNativeLibrary()
-        
+
         try {
             loadModelFromAssets()
         } catch (e: Throwable) {
             e.printStackTrace()
         }
-        
+
         loadInt8BehavioralProfile()
+    }
+
+    fun setIntelligenceTier(tier: IntelligenceTier): IntelligenceTier {
+        currentIntelligenceTier = tier
+        persistIntelligenceTier(tier)
+        return currentIntelligenceTier
+    }
+
+    fun cycleIntelligenceTier(): IntelligenceTier {
+        val next = when (currentIntelligenceTier) {
+            IntelligenceTier.TIER_1_LOW_VERSION_AI -> IntelligenceTier.TIER_2_SUPER_INTELLIGENCE
+            IntelligenceTier.TIER_2_SUPER_INTELLIGENCE -> IntelligenceTier.TIER_3_HIGH_DIMENSIONAL_INTELLIGENCE
+            IntelligenceTier.TIER_3_HIGH_DIMENSIONAL_INTELLIGENCE -> IntelligenceTier.TIER_1_LOW_VERSION_AI
+        }
+        return setIntelligenceTier(next)
+    }
+
+    private fun loadSavedIntelligenceTier() {
+        try {
+            val prefs = context.getSharedPreferences(tierPrefName, Context.MODE_PRIVATE)
+            val savedName = prefs.getString(
+                "intelligence_tier",
+                IntelligenceTier.TIER_3_HIGH_DIMENSIONAL_INTELLIGENCE.name
+            ) ?: IntelligenceTier.TIER_3_HIGH_DIMENSIONAL_INTELLIGENCE.name
+            currentIntelligenceTier = runCatching { IntelligenceTier.valueOf(savedName) }
+                .getOrDefault(IntelligenceTier.TIER_3_HIGH_DIMENSIONAL_INTELLIGENCE)
+        } catch (e: Throwable) {
+            e.printStackTrace()
+            currentIntelligenceTier = IntelligenceTier.TIER_3_HIGH_DIMENSIONAL_INTELLIGENCE
+        }
+    }
+
+    private fun persistIntelligenceTier(tier: IntelligenceTier) {
+        try {
+            context.getSharedPreferences(tierPrefName, Context.MODE_PRIVATE).edit().apply {
+                putString("intelligence_tier", tier.name)
+                apply()
+            }
+        } catch (e: Throwable) {
+            e.printStackTrace()
+        }
     }
 
     private fun loadModelFromAssets() {
@@ -184,10 +243,14 @@ class OnnxEngine(private val context: Context) {
             try {
                 ortEnv = OrtEnvironment.getEnvironment()
                 ortSession = ortEnv?.createSession(modelFile.absolutePath, OrtSession.SessionOptions())
-                
+
                 // Safely initialize native model only if library loaded cleanly
                 if (isNativeLibraryLoaded) {
-                    initModel(modelFile.absolutePath)
+                    try {
+                        initModel(modelFile.absolutePath)
+                    } catch (e: Throwable) {
+                        e.printStackTrace()
+                    }
                 }
             } catch (e: Throwable) {
                 ortEnv = null
@@ -217,31 +280,49 @@ class OnnxEngine(private val context: Context) {
 
         val lower = cleanPrompt.lowercase()
 
-        // 1. Mode Switching Interceptor
+        // 1. Free Tier 1-3 Scaling Interceptor
+        if (lower.contains("tier 1") || lower.contains("low version")) {
+            val tier = setIntelligenceTier(IntelligenceTier.TIER_1_LOW_VERSION_AI)
+            return "Tier Scaled (Free): ${tier.label} (T1 | Ctx:${tier.contextWindow})."
+        }
+        if (lower.contains("tier 2") || lower.contains("super intelligence")) {
+            val tier = setIntelligenceTier(IntelligenceTier.TIER_2_SUPER_INTELLIGENCE)
+            return "Tier Scaled (Free): ${tier.label} (T2 | Ctx:${tier.contextWindow})."
+        }
+        if (lower.contains("tier 3") || lower.contains("high dimensional")) {
+            val tier = setIntelligenceTier(IntelligenceTier.TIER_3_HIGH_DIMENSIONAL_INTELLIGENCE)
+            return "Tier Scaled (Free): ${tier.label} (T3 | Ctx:${tier.contextWindow})."
+        }
+        if (lower.contains("next tier") || lower.contains("scale tier") || lower.contains("cycle tier")) {
+            val tier = cycleIntelligenceTier()
+            return "Tier Scaled (Free): ${tier.label} (T${tier.level} | Ctx:${tier.contextWindow})."
+        }
+
+        // 2. Mode Switching Interceptor
         if (lower.contains("switch mode") || lower.contains("toggle sim") || lower.contains("set mode")) {
             val newMode = toggleExecutionMode()
             return "Command Executed: Execution mode updated to $newMode."
         }
 
-        // 2. Identity Query Interceptor
-        if (lower.contains("who are you") || lower.contains("identity") || lower.contains("status")) {
-            return "Identity: $modelIdentityName | Owner: $organizationOwner | Framework: $frameworkType | Mode: $currentExecutionMode | VLA Engine: Online."
+        // 3. Identity & Tier Query Interceptor
+        if (lower.contains("who are you") || lower.contains("identity") || lower.contains("status") || lower.contains("tier")) {
+            return "Identity: $modelIdentityName | Owner: $organizationOwner | Framework: $frameworkType | Scale: ${currentIntelligenceTier.label} (T${currentIntelligenceTier.level}) | Mode: $currentExecutionMode | VLA Engine: Online."
         }
 
-        // 3. VLA Telemetry Request Interceptor
+        // 4. VLA Telemetry Request Interceptor
         if (lower.contains("telemetry") || lower.contains("vla") || lower.contains("camera")) {
             val telemetry = computeCameraTelemetry(16L)
-            return "VLA Telemetry Status: FPS: ${telemetry.frameRateFps} | Latency: ${telemetry.latencyMs}ms | Action Confidence: ${telemetry.vlaActionConfidence * 100}% | Spectrum: ${telemetry.displayColorSpectrum}"
+            return "VLA Telemetry Status: FPS: ${telemetry.frameRateFps} | Latency: ${telemetry.latencyMs}ms | Scale: ${telemetry.intelligenceTier.label} | Action Confidence: ${telemetry.vlaActionConfidence * 100}% | Spectrum: ${telemetry.displayColorSpectrum}"
         }
 
-        // 4. Sanitize / Filter Text Command Interceptor
+        // 5. Sanitize / Filter Text Command Interceptor
         if (lower.startsWith("sanitize:") || lower.startsWith("filter:")) {
             val textToProcess = cleanPrompt.substringAfter(":").trim()
             val sanitized = processAndFilterText(textToProcess, "notification.pane")
             return "Filtered Output: $sanitized"
         }
 
-        // 5. Fallback Domain Dispatch
+        // 6. Fallback Domain Dispatch
         return processNotificationCommand(cleanPrompt)
     }
 
@@ -267,7 +348,7 @@ class OnnxEngine(private val context: Context) {
         val safetyFactor = pidController.computeComplianceAdjustment(1.0f, currentCompliance, signalPurity)
 
         val modePrefix = if (currentExecutionMode == ExecutionMode.TACTICAL_SIM) "[TACTICAL SIM]" else "[REAL WORLD]"
-        return "$modePrefix [$modelIdentityName Governed: ${(safetyFactor * 100).toInt()}%] $rawResponse"
+        return "$modePrefix [T${currentIntelligenceTier.level}:${currentIntelligenceTier.label}] [$modelIdentityName Governed: ${(safetyFactor * 100).toInt()}%] $rawResponse"
     }
 
     /**
@@ -287,7 +368,7 @@ class OnnxEngine(private val context: Context) {
 
         val rawWpm = if (timeSinceLastTapMs > 0) (60000.0f / timeSinceLastTapMs) / 5.0f else 40.0f
         typingSpeedWpm = (typingSpeedWpm * 0.9f) + (rawWpm * 0.1f)
-        
+
         val tapAggression = (estimatedForce * 0.5f) + (if (dwellTimeMs < 50) 0.3f else 0.0f) + ((1.0f - molecularResonance) * 0.2f)
         aggressionIndex = (aggressionIndex * 0.85f) + (tapAggression * 0.15f)
 
@@ -327,7 +408,7 @@ class OnnxEngine(private val context: Context) {
 
         val capsRatio = if (inputText.isNotEmpty()) inputText.count { it.isUpperCase() }.toFloat() / inputText.length else 0.0f
         val exclamations = inputText.count { it == '!' || it == '?' }
-        
+
         trollBehaviorScore = (toxicMatches * 0.4f) + (capsRatio * 0.3f) + (min(exclamations, 5) * 0.1f) + (aggressionIndex * 0.2f)
 
         return if (trollBehaviorScore > 0.45f) {
@@ -359,7 +440,7 @@ class OnnxEngine(private val context: Context) {
     private fun optimizeGrammarAndTone(inputText: String): String {
         if (inputText.isBlank()) return inputText
         var optimized = inputText.trim()
-        
+
         optimized = optimized.replaceFirstChar { it.uppercase() }
         if (!optimized.endsWith(".") && !optimized.endsWith("?") && !optimized.endsWith("!")) {
             optimized += "."
@@ -370,7 +451,7 @@ class OnnxEngine(private val context: Context) {
     fun schedulePost(targetAppPackage: String, textToPost: String, delayMinutes: Long) {
         val executeAt = System.currentTimeMillis() + (delayMinutes * 60 * 1000)
         val sanitizedText = processAndFilterText(textToPost, targetAppPackage)
-        
+
         scheduledQueue.add(ScheduledPost(targetAppPackage, sanitizedText, executeAt))
     }
 
@@ -405,9 +486,9 @@ class OnnxEngine(private val context: Context) {
             val results = ortSession?.run(mapOf("input" to tensor))
             val outputTensor = results?.get(0) as? OnnxTensor
             val rawOutput = outputTensor?.floatBuffer?.array()
-            
+
             rawOutput?.map { it * 0.9999f }?.toFloatArray()
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             e.printStackTrace()
             null
         }
@@ -424,11 +505,12 @@ class OnnxEngine(private val context: Context) {
             complianceScore = 0.99f,
             activeDomain = HyperDomain.TECHNOLOGY,
             executionMode = currentExecutionMode,
-            xenoIrState = "Xeno-IR Quantum Continuum Active [Low Footprint]",
+            xenoIrState = "Xeno-IR Quantum Continuum Active [${currentIntelligenceTier.label}]",
             displayColorSpectrum = "Quantum Dot Shift Delta: 0.02nm",
             pixelEnergyEfficiency = 0.96f,
             vlaActionConfidence = 0.985f,
-            vlaTargetBoundingBox = "[x:120, y:240, w:300, h:180]"
+            vlaTargetBoundingBox = "[x:120, y:240, w:300, h:180]",
+            intelligenceTier = currentIntelligenceTier
         )
     }
 
@@ -468,28 +550,36 @@ class OnnxEngine(private val context: Context) {
     }
 
     private fun loadInt8BehavioralProfile() {
-        val prefs = context.getSharedPreferences(prefName, Context.MODE_PRIVATE)
-        userDwellBias = prefs.getFloat("dwell_bias_int8", 0.0f)
-        userPressureScale = prefs.getFloat("pressure_scale_int8", 1.0f)
-        tapCount = prefs.getInt("tap_count", 0)
-        typingSpeedWpm = prefs.getFloat("wpm_int8", 40.0f)
-        aggressionIndex = prefs.getFloat("aggression_int8", 0.0f)
+        try {
+            val prefs = context.getSharedPreferences(prefName, Context.MODE_PRIVATE)
+            userDwellBias = prefs.getFloat("dwell_bias_int8", 0.0f)
+            userPressureScale = prefs.getFloat("pressure_scale_int8", 1.0f)
+            tapCount = prefs.getInt("tap_count", 0)
+            typingSpeedWpm = prefs.getFloat("wpm_int8", 40.0f)
+            aggressionIndex = prefs.getFloat("aggression_int8", 0.0f)
+        } catch (e: Throwable) {
+            e.printStackTrace()
+        }
     }
 
     private fun updateInt8BehavioralProfile(pressure: Float, dwellTimeMs: Long) {
-        tapCount++
-        userDwellBias = (userDwellBias * 0.95f) + ((dwellTimeMs - 120.0f) * 0.001f * 0.05f)
-        userPressureScale = (userPressureScale * 0.98f) + (pressure * 0.02f)
+        try {
+            tapCount++
+            userDwellBias = (userDwellBias * 0.95f) + ((dwellTimeMs - 120.0f) * 0.001f * 0.05f)
+            userPressureScale = (userPressureScale * 0.98f) + (pressure * 0.02f)
 
-        if (tapCount % 10 == 0) {
-            context.getSharedPreferences(prefName, Context.MODE_PRIVATE).edit().apply {
-                putFloat("dwell_bias_int8", userDwellBias)
-                putFloat("pressure_scale_int8", userPressureScale)
-                putFloat("wpm_int8", typingSpeedWpm)
-                putFloat("aggression_int8", aggressionIndex)
-                putInt("tap_count", tapCount)
-                apply()
+            if (tapCount % 10 == 0) {
+                context.getSharedPreferences(prefName, Context.MODE_PRIVATE).edit().apply {
+                    putFloat("dwell_bias_int8", userDwellBias)
+                    putFloat("pressure_scale_int8", userPressureScale)
+                    putFloat("wpm_int8", typingSpeedWpm)
+                    putFloat("aggression_int8", aggressionIndex)
+                    putInt("tap_count", tapCount)
+                    apply()
+                }
             }
+        } catch (e: Throwable) {
+            e.printStackTrace()
         }
     }
 }
