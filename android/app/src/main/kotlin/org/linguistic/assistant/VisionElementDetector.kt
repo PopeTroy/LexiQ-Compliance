@@ -3,16 +3,20 @@ package org.linguistic.assistant
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.PointF
 import android.os.Handler
 import android.os.Looper
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.util.Base64
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 /**
  * Quick Settings Tile Controller for Lexi Vision / VLA Mode
@@ -45,12 +49,12 @@ class LexiVisionTileService : TileService() {
             if (tile.state == Tile.STATE_INACTIVE) {
                 tile.state = Tile.STATE_ACTIVE
                 tile.label = "Lexi Vision: ON"
-                
+
                 val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
                     putExtra("ACTION_START_VLA", true)
                 }
-                
+
                 if (launchIntent != null) {
                     startActivityAndCollapse(launchIntent)
                 }
@@ -63,13 +67,13 @@ class LexiVisionTileService : TileService() {
             tile.state = Tile.STATE_INACTIVE
             tile.label = "Lexi Vision"
         }
-        
+
         tile.updateTile()
     }
 
     private fun updateTileState() {
         val tile = qsTile ?: return
-        tile.state = Tile.STATE_INACTIVE 
+        tile.state = Tile.STATE_INACTIVE
         tile.label = "Lexi Vision"
         tile.subtitle = "Tap to launch"
         tile.updateTile()
@@ -77,7 +81,9 @@ class LexiVisionTileService : TileService() {
 }
 
 /**
- * Spatial Vision Element Detector utilizing NVIDIA Nim Vision-Language-Action (VLA) Pipeline
+ * Spatial Vision Element Detector utilizing NVIDIA NIM Vision-Language-Action (VLA) Pipeline
+ * with Scientific/Engineering Taxonomies, Pop-Up Summaries, Brus/Euclidean Rectification,
+ * and Talk-Back Output Formatting.
  */
 class VisionElementDetector(private val context: Context) {
 
@@ -110,8 +116,56 @@ class VisionElementDetector(private val context: Context) {
         val definition: String,
         val detailedDescription: String,
         val hazardOrNote: String,
-        val vlaBoundingTarget: String = "[Unspecified]"
+        val vlaBoundingTarget: String = "[Unspecified]",
+        val scientificName: String = "N/A",
+        val engineeringName: String = "N/A"
     )
+
+    data class DetectedPopupItem(
+        val elementName: String,
+        val scientificName: String,
+        val engineeringName: String,
+        val miniDescription: String,
+        val hazardOrNote: String,
+        val boundingBox: String,
+        val confidence: Float = 0.90f
+    )
+
+    /**
+     * Applies a Brus-style radial/Euclidean coordinate adjustment on normalized [0..1]
+     * coordinates relative to the image center (0.5, 0.5).
+     */
+    fun rectifyNormalizedPoint(
+        x: Float,
+        y: Float,
+        k1: Float = -0.04f,
+        k2: Float = 0.01f
+    ): PointF {
+        val cx = 0.5f
+        val cy = 0.5f
+        val dx = x - cx
+        val dy = y - cy
+        val r2 = dx * dx + dy * dy
+        val radialScale = 1.0f + (k1 * r2) + (k2 * r2.pow(2))
+        val rx = (cx + dx * radialScale).coerceIn(0f, 1f)
+        val ry = (cy + dy * radialScale).coerceIn(0f, 1f)
+        return PointF(rx, ry)
+    }
+
+    fun euclideanDistance(a: PointF, b: PointF): Float {
+        val dx = a.x - b.x
+        val dy = a.y - b.y
+        return sqrt(dx * dx + dy * dy)
+    }
+
+    fun buildTalkBackSummary(items: List<DetectedPopupItem>): String {
+        if (items.isEmpty()) {
+            return "No objects or structures identified in the current view."
+        }
+        return items.take(4).joinToString(" ") { item ->
+            "${item.elementName} (${item.scientificName}, ${item.engineeringName}): ${item.miniDescription}"
+        }
+    }
 
     fun analyzeTappedElement(
         bitmap: Bitmap,
@@ -134,50 +188,29 @@ class VisionElementDetector(private val context: Context) {
                     return@thread
                 }
 
-                val outputStream = ByteArrayOutputStream()
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 85, outputStream)
-                val base64Image = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
+                val rectified = rectifyNormalizedPoint(normalizedX, normalizedY)
+                val base64Image = encodeBitmapToBase64(bitmap)
 
                 val tapLocationPrompt = """
-                    The user tapped on the image at normalized coordinates: X = ${"%.2f".format(normalizedX)}, Y = ${"%.2f".format(normalizedY)} (where 0,0 is top-left and 1,1 is bottom-right).
-                    Focus specifically on the object, plant, animal, device, or feature located at or directly under these coordinates.
-                    
+                    The user tapped on the image at rectified normalized coordinates: X = ${"%.2f".format(rectified.x)}, Y = ${"%.2f".format(rectified.y)} (where 0,0 is top-left and 1,1 is bottom-right).
+                    Focus specifically on the object, plant, animal, device, material, or structural/cosmogenesis feature located at or directly under these coordinates.
+
                     Return a JSON object with this exact structure:
                     {
-                      "element_name": "Common/Scientific Name of the object",
+                      "element_name": "Common/Everyday Name of the item",
+                      "scientific_name": "Taxonomic, chemical, or physical/cosmological scientific name (or 'N/A')",
+                      "engineering_name": "Engineering, material, mechanical, or architectural designation (or 'N/A')",
                       "definition": "A 1-sentence concise definition of what this item is.",
-                      "description": "A detailed 2-3 sentence description covering key features, habitat/use, and characteristics.",
+                      "description": "A detailed 2-3 sentence description covering key features, context, and characteristics.",
                       "safety_note": "Any relevant toxicity, safety, or operational notes (or 'None')."
                     }
                 """.trimIndent()
 
-                val payload = JSONObject().apply {
-                    put("model", "meta/llama-3.2-11b-vision-instruct")
-                    put("response_format", JSONObject().apply { put("type", "json_object") })
-                    put("messages", arrayOf(
-                        JSONObject().apply {
-                            put("role", "user")
-                            put("content", arrayOf(
-                                JSONObject().apply {
-                                    put("type", "text")
-                                    put("text", tapLocationPrompt)
-                                },
-                                JSONObject().apply {
-                                    put("type", "image_url")
-                                    put("image_url", JSONObject().apply {
-                                        put("url", "data:image/jpeg;base64,$base64Image")
-                                    })
-                                }
-                            ))
-                        }
-                    ))
-                }
-
+                val payload = buildVisionChatPayload(base64Image, tapLocationPrompt)
                 val responseStr = executeHttpRequest(BASE_URL, payload)
-                val jsonResponse = JSONObject(responseStr)
-                
-                val choices = jsonResponse.optJSONArray("choices")
-                if (choices == null || choices.length() == 0) {
+                val contentString = extractAssistantContent(responseStr)
+
+                if (contentString.isBlank()) {
                     notifyResult(
                         ElementDefinition(
                             elementName = "Analysis Unavailable",
@@ -190,23 +223,21 @@ class VisionElementDetector(private val context: Context) {
                     return@thread
                 }
 
-                val contentString = choices.getJSONObject(0)
-                    .getJSONObject("message")
-                    .getString("content")
-
                 val resultObj = JSONObject(contentString)
-                val telemetryTarget = onnxEngine?.computeCameraTelemetry(16L)?.vlaTargetBoundingBox ?: "[x:0, y:0, w:0, h:0]"
+                val telemetryTarget = onnxEngine?.computeCameraBoundingBox(16L)?.vlaTargetBoundingBox
+                    ?: "[x:0, y:0, w:0, h:0]"
 
                 val elementDef = ElementDefinition(
                     elementName = resultObj.optString("element_name", "Unknown Feature"),
                     definition = resultObj.optString("definition", "No definition available."),
                     detailedDescription = resultObj.optString("description", "No details returned."),
                     hazardOrNote = resultObj.optString("safety_note", "None"),
-                    vlaBoundingTarget = telemetryTarget
+                    vlaBoundingTarget = telemetryTarget,
+                    scientificName = resultObj.optString("scientific_name", "N/A"),
+                    engineeringName = resultObj.optString("engineering_name", "N/A")
                 )
 
                 notifyResult(elementDef, callback)
-
             } catch (e: Throwable) {
                 e.printStackTrace()
                 notifyResult(
@@ -222,6 +253,130 @@ class VisionElementDetector(private val context: Context) {
         }
     }
 
+    /**
+     * Scans the camera view for multiple visible elements and returns structured pop-up cards
+     * containing mini descriptions, scientific names, and engineering names.
+     */
+    fun scanScenePopups(
+        bitmap: Bitmap,
+        maxPopups: Int = 6,
+        callback: (List<DetectedPopupItem>) -> Unit
+    ) {
+        thread {
+            try {
+                if (API_KEY.isBlank()) {
+                    mainHandler.post { callback(emptyList()) }
+                    return@thread
+                }
+
+                val base64Image = encodeBitmapToBase64(bitmap)
+                val scenePrompt = """
+                    Analyze everything visible in this camera view (up to $maxPopups prominent objects, organisms, materials, devices, or structures).
+                    For each item, provide a concise mini description plus its scientific name and engineering name where applicable.
+
+                    Return a JSON object with this exact structure:
+                    {
+                      "items": [
+                        {
+                          "element_name": "Name of visible item",
+                          "scientific_name": "Scientific / taxonomic / chemical / physical name or N/A",
+                          "engineering_name": "Engineering / material / functional name or N/A",
+                          "mini_description": "Short 1-sentence summary of what it is and its role",
+                          "safety_note": "Safety or hazard note or None",
+                          "bbox": "[x:0.10, y:0.20, w:0.30, h:0.25]",
+                          "confidence": 0.92
+                        }
+                      ]
+                    }
+                """.trimIndent()
+
+                val payload = buildVisionChatPayload(base64Image, scenePrompt)
+                val responseStr = executeHttpRequest(BASE_URL, payload)
+                val contentString = extractAssistantContent(responseStr)
+                if (contentString.isBlank()) {
+                    mainHandler.post { callback(emptyList()) }
+                    return@thread
+                }
+
+                val root = JSONObject(contentString)
+                val arr: JSONArray = root.optJSONArray("items") ?: JSONArray()
+                val items = mutableListOf<DetectedPopupItem>()
+
+                for (i in 0 until minOf(arr.length(), maxPopups)) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    items.add(
+                        DetectedPopupItem(
+                            elementName = obj.optString("element_name", "Observed Entity"),
+                            scientificName = obj.optString("scientific_name", "N/A"),
+                            engineeringName = obj.optString("engineering_name", "N/A"),
+                            miniDescription = obj.optString("mini_description", "No summary available."),
+                            hazardOrNote = obj.optString("safety_note", "None"),
+                            boundingBox = obj.optString("bbox", "[x:0.00, y:0.00, w:0.00, h:0.00]"),
+                            confidence = obj.optDouble("confidence", 0.90).toFloat().coerceIn(0f, 1f)
+                        )
+                    )
+                }
+
+                mainHandler.post { callback(items) }
+            } catch (e: Throwable) {
+                e.printStackTrace()
+                mainHandler.post { callback(emptyList()) }
+            }
+        }
+    }
+
+    private fun encodeBitmapToBase64(bitmap: Bitmap): String {
+        val outputStream = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, outputStream)
+        return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
+    }
+
+    private fun buildVisionChatPayload(base64Image: String, promptText: String): JSONObject {
+        return JSONObject().apply {
+            put("model", "meta/llama-3.2-11b-vision-instruct")
+            put("response_format", JSONObject().apply { put("type", "json_object") })
+            put(
+                "messages",
+                JSONArray().put(
+                    JSONObject().apply {
+                        put("role", "user")
+                        put(
+                            "content",
+                            JSONArray()
+                                .put(
+                                    JSONObject().apply {
+                                        put("type", "text")
+                                        put("text", promptText)
+                                    }
+                                )
+                                .put(
+                                    JSONObject().apply {
+                                        put("type", "image_url")
+                                        put(
+                                            "image_url",
+                                            JSONObject().apply {
+                                                put("url", "data:image/jpeg;base64,$base64Image")
+                                            }
+                                        )
+                                    }
+                                )
+                        )
+                    }
+                )
+            )
+        }
+    }
+
+    private fun extractAssistantContent(responseStr: String): String {
+        val jsonResponse = JSONObject(responseStr)
+        val choices = jsonResponse.optJSONArray("choices")
+        if (choices == null || choices.length() == 0) return ""
+        return choices.getJSONObject(0)
+            .optJSONObject("message")
+            ?.optString("content", "")
+            ?: ""
+    }
+
     private fun notifyResult(result: ElementDefinition, callback: (ElementDefinition) -> Unit) {
         mainHandler.post {
             callback(result)
@@ -231,13 +386,14 @@ class VisionElementDetector(private val context: Context) {
     private fun executeHttpRequest(urlString: String, jsonBody: JSONObject): String {
         return try {
             val url = URL(urlString)
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("Authorization", "Bearer $API_KEY")
-            conn.connectTimeout = 10000
-            conn.readTimeout = 10000
-            conn.doOutput = true
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Authorization", "Bearer $API_KEY")
+                connectTimeout = 10000
+                readTimeout = 10000
+                doOutput = true
+            }
 
             conn.outputStream.use { it.write(jsonBody.toString().toByteArray()) }
 
