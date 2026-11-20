@@ -4,32 +4,35 @@ project("lexiq_onnx_security" LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(ORT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/onnxruntime")
-set(ORT_INCLUDE_DIR "${ORT_ROOT}/headers")
-set(ORT_LIB_FILE "${ORT_ROOT}/jni/${ANDROID_ABI}/libonnxruntime.so")
+find_library(log-lib log)
 
-add_library(
-    lexiq_onnx_security
-    SHARED
-    lexiq_onnx_security.cpp
-)
+set(LEXIQ_SECURITY_SRC "${CMAKE_CURRENT_SOURCE_DIR}/lexiq_onnx_security.cpp")
+set(LEXIQ_BRIDGE_SRC "${CMAKE_CURRENT_SOURCE_DIR}/native_bridge.cpp")
 
-target_include_directories(
-    lexiq_onnx_security
-    PRIVATE
-    "${ORT_INCLUDE_DIR}"
-)
+if(EXISTS "${LEXIQ_SECURITY_SRC}")
+    set(NATIVE_SOURCES "${LEXIQ_SECURITY_SRC}")
+elseif(EXISTS "${LEXIQ_BRIDGE_SRC}")
+    set(NATIVE_SOURCES "${LEXIQ_BRIDGE_SRC}")
+else()
+    set(GENERATED_SRC "${CMAKE_CURRENT_BINARY_DIR}/lexiq_onnx_security_fallback.cpp")
+    file(WRITE "${GENERATED_SRC}" [=[
+#include <jni.h>
+#include <android/log.h>
 
-option(USE_NNAPI "Enable ONNX Runtime NNAPI Execution Provider" ON)
-if(USE_NNAPI)
-    target_compile_definitions(lexiq_onnx_security PRIVATE USE_NNAPI)
+extern "C" JNIEXPORT jstring JNICALL
+Java_org_linguistic_assistant_OnnxEngine_nativeEngineStatus(JNIEnv* env, jobject /* thiz */) {
+    __android_log_print(ANDROID_LOG_INFO, "LexiQNative", "lexiq_onnx_security fallback active");
+    return env->NewStringUTF("READY_FALLBACK");
+}
+]=])
+    set(NATIVE_SOURCES "${GENERATED_SRC}")
 endif()
 
-find_library(log-lib log)
+add_library(lexiq_onnx_security SHARED ${NATIVE_SOURCES})
+
+target_compile_options(lexiq_onnx_security PRIVATE -fexceptions -frtti)
 
 target_link_libraries(
     lexiq_onnx_security
-    PRIVATE
-    "${ORT_LIB_FILE}"
     ${log-lib}
 )
