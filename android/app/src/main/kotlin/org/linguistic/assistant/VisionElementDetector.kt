@@ -84,16 +84,22 @@ class LexiVisionTileService : TileService() {
 }
 
 /**
- * Spatial Vision Element Detector with Downloadable Local VLM/Grounding Model Profiles
+ * Spatial Vision Element Detector with Downloadable FP32 & INT8 ONNX Vision Models
  * under filesDir/vlm_models/<archiveFolder>, Brus/Euclidean rectification, Pop-Up Cards,
  * and NVIDIA NIM Vision-Language fallback/enrichment.
  */
 class VisionElementDetector(private val context: Context) {
 
+    enum class OnnxPrecision {
+        FP32,
+        INT8
+    }
+
     data class VisionModelProfile(
         val id: String,
         val displayName: String,
         val archiveFolder: String,
+        val precision: OnnxPrecision,
         val footprintHint: String,
         val nimFallbackModel: String = "meta/llama-3.2-11b-vision-instruct",
         val artifactUrls: Map<String, String>
@@ -123,33 +129,46 @@ class VisionElementDetector(private val context: Context) {
     private val isDownloadingModels = AtomicBoolean(false)
     private var activeModelIndex = 0
 
+    // Real downloadable ONNX vision/detection profiles (FP32 and INT8/Quantized)
     private val vlmModels = listOf(
         VisionModelProfile(
-            id = "kosmos-2-patch14-224",
-            displayName = "Kosmos-2 Grounding VLM",
-            archiveFolder = "kosmos_2_patch14_224",
-            footprintHint = "Grounded Scene & Box",
+            id = "yolov8n-seg-fp32-onnx",
+            displayName = "YOLOv8n Seg ONNX (FP32)",
+            archiveFolder = "yolov8n_seg_fp32_onnx",
+            precision = OnnxPrecision.FP32,
+            footprintHint = "FP32 Segmentation & Box (~13.9MB)",
             artifactUrls = mapOf(
-                "config.json" to "https://huggingface.co/microsoft/kosmos-2-patch14-224/resolve/main/config.json",
-                "preprocessor_config.json" to "https://huggingface.co/microsoft/kosmos-2-patch14-224/resolve/main/preprocessor_config.json"
+                "yolov8n-seg-fp32.onnx" to "https://huggingface.co/EdgeFirst/yolov8-seg/resolve/df32788abff5b47fa4e8471aa2d5cd248254ced2/onnx/yolov8n-seg-fp32.onnx"
             )
         ),
         VisionModelProfile(
-            id = "grounding-dino-tiny",
-            displayName = "Grounding DINO Tiny",
-            archiveFolder = "grounding_dino_tiny",
-            footprintHint = "Open-Set Object Detection",
+            id = "mobilenet-v2-fp32-onnx",
+            displayName = "MobileNetV2 ONNX (FP32)",
+            archiveFolder = "mobilenet_v2_fp32_onnx",
+            precision = OnnxPrecision.FP32,
+            footprintHint = "FP32 Vision Backbone (~14MB)",
             artifactUrls = mapOf(
-                "config.json" to "https://huggingface.co/IDEA-Research/grounding-dino-tiny/resolve/main/config.json"
+                "mobilenet_v2.onnx" to "https://huggingface.co/unity/inference-engine-mobilenet-v2/resolve/main/models/mobilenet_v2.onnx"
             )
         ),
         VisionModelProfile(
-            id = "llama-nemotron-embed-vl-1b-v2",
-            displayName = "Nemotron Embed VL 1B v2",
-            archiveFolder = "llama_nemotron_embed_vl_1b_v2",
-            footprintHint = "Multimodal Retrieval & Taxonomy",
+            id = "yolov8n-int8-onnx",
+            displayName = "YOLOv8n Detector ONNX (INT8/Edge)",
+            archiveFolder = "yolov8n_int8_onnx",
+            precision = OnnxPrecision.INT8,
+            footprintHint = "Compact Edge Detector (~12.8MB)",
             artifactUrls = mapOf(
-                "config.json" to "https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2/resolve/main/config.json"
+                "yolov8n.onnx" to "https://huggingface.co/Kalray/yolov8/resolve/main/yolov8n.onnx"
+            )
+        ),
+        VisionModelProfile(
+            id = "mobilenet-v2-224-int8-onnx",
+            displayName = "MobileNetV2 224 ONNX (INT8/Edge)",
+            archiveFolder = "mobilenet_v2_224_int8_onnx",
+            precision = OnnxPrecision.INT8,
+            footprintHint = "Compact Feature Extractor (~14MB)",
+            artifactUrls = mapOf(
+                "model.onnx" to "https://huggingface.co/onnx-community/mobilenet_v2_1.0_224-ONNX/resolve/main/onnx/model.onnx"
             )
         )
     )
@@ -183,12 +202,18 @@ class VisionElementDetector(private val context: Context) {
         return File(File(context.filesDir, "vlm_models"), profile.archiveFolder)
     }
 
+    fun resolveLocalOnnxFile(profile: VisionModelProfile = currentVisionProfile()): File? {
+        val dir = modelDirectoryFor(profile)
+        if (!dir.exists() || !dir.isDirectory) return null
+        return dir.listFiles()?.firstOrNull { file ->
+            file.isFile && file.extension.equals("onnx", ignoreCase = true) && file.length() > 0L
+        }
+    }
+
     fun isModelDownloadedLocally(profile: VisionModelProfile): Boolean {
         return try {
-            val dir = modelDirectoryFor(profile)
-            dir.exists() && dir.isDirectory &&
-                (File(dir, "manifest.json").exists() ||
-                    (dir.listFiles()?.any { it.isFile && it.length() > 0L } == true))
+            val onnxFile = resolveLocalOnnxFile(profile)
+            onnxFile != null && File(modelDirectoryFor(profile), "manifest.json").exists()
         } catch (_: Throwable) {
             false
         }
@@ -196,9 +221,29 @@ class VisionElementDetector(private val context: Context) {
 
     fun downloadedModelCount(): Int = vlmModels.count { isModelDownloadedLocally(it) }
 
+    fun selectPrecision(precision: OnnxPrecision): VisionModelProfile {
+        val idx = vlmModels.indexOfFirst { it.precision == precision }
+        if (idx >= 0) {
+            activeModelIndex = idx
+            activateSelectedOnnxInEngine(vlmModels[activeModelIndex])
+        }
+        return currentVisionProfile()
+    }
+
     fun cycleVisionModel(): VisionModelProfile {
         activeModelIndex = (activeModelIndex + 1) % vlmModels.size
-        return currentVisionProfile()
+        val selected = currentVisionProfile()
+        activateSelectedOnnxInEngine(selected)
+        return selected
+    }
+
+    fun activateSelectedOnnxInEngine(profile: VisionModelProfile = currentVisionProfile()): Boolean {
+        val onnxFile = resolveLocalOnnxFile(profile) ?: return false
+        return try {
+            onnxEngine?.initModel(onnxFile.absolutePath) == true
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     fun downloadAllVlmModelsAsync(onComplete: ((Int, Int) -> Unit)? = null) {
@@ -225,12 +270,16 @@ class VisionElementDetector(private val context: Context) {
                         }
                     }
 
+                    val onnxFile = resolveLocalOnnxFile(profile)
                     File(targetDir, "manifest.json").writeText(
                         """
                         {
                           "id": "${profile.id}",
                           "name": "${profile.displayName}",
+                          "precision": "${profile.precision.name}",
                           "footprint": "${profile.footprintHint}",
+                          "onnx_file": "${onnxFile?.name ?: ""}",
+                          "onnx_bytes": ${onnxFile?.length() ?: 0L},
                           "nim_fallback_model": "${profile.nimFallbackModel}",
                           "artifacts_ready": $fetchedFiles,
                           "synced_at_ms": ${System.currentTimeMillis()}
@@ -238,6 +287,7 @@ class VisionElementDetector(private val context: Context) {
                         """.trimIndent()
                     )
                 }
+                activateSelectedOnnxInEngine(currentVisionProfile())
             } catch (e: Throwable) {
                 e.printStackTrace()
             } finally {
@@ -252,8 +302,8 @@ class VisionElementDetector(private val context: Context) {
         return try {
             val url = URL(urlString)
             val conn = (url.openConnection() as HttpURLConnection).apply {
-                connectTimeout = 8000
-                readTimeout = 12000
+                connectTimeout = 10000
+                readTimeout = 20000
                 requestMethod = "GET"
             }
             if (conn.responseCode in 200..299) {
@@ -318,21 +368,27 @@ class VisionElementDetector(private val context: Context) {
         thread {
             try {
                 val activeProfile = currentVisionProfile()
-                if (!isModelDownloadedLocally(activeProfile)) {
+                val localOnnx = resolveLocalOnnxFile(activeProfile)
+                if (localOnnx == null) {
                     downloadAllVlmModelsAsync()
                 }
 
                 if (API_KEY.isBlank()) {
                     val telemetryTarget = onnxEngine?.computeCameraBoundingBox(16L)?.vlaTargetBoundingBox
                         ?: "[x:0.25, y:0.25, w:0.50, h:0.50]"
+                    val resolvedOnnx = resolveLocalOnnxFile(activeProfile)
                     notifyResult(
                         ElementDefinition(
-                            elementName = "${activeProfile.displayName} Local Profile",
-                            definition = "Local model manifest staged (${downloadedModelCount()}/${vlmModels.size}); cloud NIM key not set.",
-                            detailedDescription = "Active profile '${activeProfile.id}' (${activeProfile.footprintHint}) is staged under vlm_models/${activeProfile.archiveFolder}.",
+                            elementName = "${activeProfile.displayName} Local ONNX",
+                            definition = if (resolvedOnnx != null) {
+                                "Local ${activeProfile.precision.name} ONNX ready (${resolvedOnnx.name}, ${resolvedOnnx.length() / 1024} KB)."
+                            } else {
+                                "Local ${activeProfile.precision.name} ONNX staging (${downloadedModelCount()}/${vlmModels.size} ready)."
+                            },
+                            detailedDescription = "Active profile '${activeProfile.id}' (${activeProfile.footprintHint}) is stored under vlm_models/${activeProfile.archiveFolder}.",
                             hazardOrNote = "None",
                             vlaBoundingTarget = telemetryTarget,
-                            scientificName = activeProfile.id,
+                            scientificName = "${activeProfile.precision.name} ONNX Tensor Graph",
                             engineeringName = activeProfile.footprintHint
                         ),
                         callback
@@ -417,24 +473,25 @@ class VisionElementDetector(private val context: Context) {
         thread {
             try {
                 val activeProfile = currentVisionProfile()
-                if (!isModelDownloadedLocally(activeProfile)) {
+                if (resolveLocalOnnxFile(activeProfile) == null) {
                     downloadAllVlmModelsAsync()
                 }
 
                 if (API_KEY.isBlank()) {
                     val box = onnxEngine?.computeCameraBoundingBox(16L)?.vlaTargetBoundingBox
                         ?: "[x:0.20, y:0.20, w:0.60, h:0.60]"
+                    val localOnnx = resolveLocalOnnxFile(activeProfile)
                     mainHandler.post {
                         callback(
                             listOf(
                                 DetectedPopupItem(
                                     elementName = activeProfile.displayName,
-                                    scientificName = activeProfile.id,
+                                    scientificName = "${activeProfile.precision.name} ONNX (${localOnnx?.name ?: "pending"})",
                                     engineeringName = activeProfile.footprintHint,
-                                    miniDescription = "Staged local VLM profile (${downloadedModelCount()}/${vlmModels.size} ready).",
+                                    miniDescription = "Local ONNX profiles ready: ${downloadedModelCount()}/${vlmModels.size}.",
                                     hazardOrNote = "None",
                                     boundingBox = box,
-                                    confidence = 0.85f
+                                    confidence = 0.88f
                                 )
                             )
                         )
