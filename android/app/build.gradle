@@ -1,0 +1,77 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+android {
+    namespace = "org.linguistic.assistant"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        applicationId = "org.linguistic.assistant"
+        minSdk = Math.max(24, flutter.minSdkVersion)
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+
+        externalNativeBuild {
+            cmake {
+                cppFlags += ["-std=c++17", "-fexceptions", "-frtti"]
+                arguments += ["-DUSE_NNAPI=ON"]
+            }
+        }
+
+        ndk {
+            abiFilters += ["arm64-v8a"]
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
+    androidResources {
+        noCompress += ["onnx", "cql", "txt", "json", "tflite"]
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = false
+            shrinkResources = false
+            signingConfig = signingConfigs.debug
+        }
+        releaseML {
+            initWith(buildTypes.release)
+            debuggable = true
+        }
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}
+
+dependencies {
+    implementation "androidx.core:core-ktx:1.13.1"
+    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.19.2"
+}
