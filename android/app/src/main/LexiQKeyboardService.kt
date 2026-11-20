@@ -1,103 +1,364 @@
 package org.linguistic.assistant
 
-import android.graphics.Bitmap
-import android.util.Base64
-import org.json.JSONObject
-import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import kotlin.concurrent.thread
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.inputmethodservice.InputMethodService
+import android.view.Gravity
+import android.view.KeyEvent
+import android.view.View
+import android.view.ViewGroup
+import android.view.inputmethod.InputConnection
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
+import java.io.File
 
-class NimMicroserviceOrchestrator {
+class LexiQKeyboardService : InputMethodService() {
+    private var suggestionHeader: TextView? = null
+    private var tikiIcon: TextView? = null
+    private var container: LinearLayout? = null
 
-    private val API_KEY = "YOUR_NVIDIA_NIM_KEY"
-    private val BASE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+    private var currentMode = 0
+    private var activeModelIndex = 0
+    private var wordBuffer = StringBuilder()
 
-    /**
-     * Instance #1 & #2: Guardrailed Text & System Intent Routing
-     */
-    fun processTextCommand(userPrompt: String, callback: (JSONObject) -> Unit) {
-        thread {
-            try {
-                val payload = JSONObject().apply {
-                    put("model", "meta/llama-3.1-70b-instruct")
-                    put("messages", arrayOf(
-                        JSONObject().apply {
-                            put("role", "system")
-                            put("content", "You are LexiQ System Controller. Output strict JSON tool actions.")
-                        },
-                        JSONObject().apply { put("role", "user"); put("content", userPrompt) }
-                    ))
-                }
-                val response = executeHttpRequest(BASE_URL, payload)
-                callback(JSONObject(response))
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+    // Neon State Styling Colors
+    private var currentBtnBg = "#00E676" // Neon Green default
+    private var currentTxtColor = "#000000" // Black default text
+
+    data class ParakeetModelProfile(
+        val id: String,
+        val displayName: String,
+        val archiveFolder: String,
+        val footprintHint: String
+    )
+
+    // Downloadable offline Parakeet model profiles staged under filesDir/parakeet_models/<archiveFolder>
+    private val parakeetModels = listOf(
+        ParakeetModelProfile(
+            id = "parakeet-110m-int8",
+            displayName = "Parakeet 110M INT8",
+            archiveFolder = "parakeet_110m_int8",
+            footprintHint = "Light Local"
+        ),
+        ParakeetModelProfile(
+            id = "parakeet-tdt-0.6b-v2-int8",
+            displayName = "Parakeet TDT 0.6B v2 INT8",
+            archiveFolder = "parakeet_tdt_06b_v2_int8",
+            footprintHint = "EN High-Acc"
+        ),
+        ParakeetModelProfile(
+            id = "parakeet-tdt-0.6b-v3-int8",
+            displayName = "Parakeet TDT 0.6B v3 INT8",
+            archiveFolder = "parakeet_tdt_06b_v3_int8",
+            footprintHint = "Multi-Lang"
+        ),
+        ParakeetModelProfile(
+            id = "parakeet-unified-en-0.6b-int8",
+            displayName = "Parakeet Unified EN 0.6B INT8",
+            archiveFolder = "parakeet_unified_en_06b_int8",
+            footprintHint = "Punct & Case"
+        )
+    )
+
+    private val spellCorrections = mapOf(
+        "keybord" to "keyboard",
+        "recieve" to "receive",
+        "seperate" to "separate",
+        "definately" to "definitely",
+        "grammer" to "grammar"
+    )
+
+    private val grammarFixes = listOf(
+        Regex("\\bthats\\b", RegexOption.IGNORE_CASE) to "that's",
+        Regex("\\bits a\\b", RegexOption.IGNORE_CASE) to "it's a",
+        Regex("\\bdont\\b", RegexOption.IGNORE_CASE) to "don't",
+        Regex("\\bcant\\b", RegexOption.IGNORE_CASE) to "can't"
+    )
+
+    private val antiTrollReplacements = listOf(
+        Regex("\\bstfu\\b", RegexOption.IGNORE_CASE) to "please keep this respectful",
+        Regex("\\bnoob\\b", RegexOption.IGNORE_CASE) to "newcomer",
+        Regex("\\btrash\\b", RegexOption.IGNORE_CASE) to "not working well for me",
+        Regex("\\bratio\\b", RegexOption.IGNORE_CASE) to "let's look at the numbers",
+        Regex("\\bcry about it\\b", RegexOption.IGNORE_CASE) to "let's move past that",
+        Regex("\\bstay mad\\b", RegexOption.IGNORE_CASE) to "no need to argue"
+    )
+
+    private val keysRow1 = arrayOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
+    private val keysRow2 = arrayOf("a", "s", "d", "f", "g", "h", "j", "k", "l")
+    private val keysRow3 = arrayOf("z", "x", "c", "v", "b", "n", "m", "DEL")
+    private val keysRow4 = arrayOf("123", "🗿", "SPACE", "SYM", "ENTER")
+
+    private val digitsRow1 = arrayOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
+    private val digitsRow2 = arrayOf("-", "/", ":", ";", "(", ")", "\$", "&", "@", "\"")
+    private val digitsRow3 = arrayOf(".", ",", "?", "!", "'", "DEL")
+    private val digitsRow4 = arrayOf("ABC", "🗿", "SPACE", "SYM", "ENTER")
+
+    private val symbolsRow1 = arrayOf("[", "]", "{", "}", "#", "%", "^", "*", "+", "=")
+    private val symbolsRow2 = arrayOf("_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•")
+    private val symbolsRow3 = arrayOf(".", ",", "?", "!", "'", "DEL")
+    private val symbolsRow4 = arrayOf("ABC", "🗿", "SPACE", "123", "ENTER")
+
+    override fun onCreateInputView(): View {
+        val layout = layoutInflater.inflate(R.layout.keyboard_view, null)
+        suggestionHeader = layout.findViewById(R.id.suggestionText)
+        tikiIcon = layout.findViewById(R.id.tikiIcon)
+        container = layout.findViewById(R.id.keyboardContainer)
+
+        updateModelStatusBanner()
+        renderKeyboardLayout()
+        return layout
+    }
+
+    private fun currentParakeetProfile(): ParakeetModelProfile = parakeetModels[activeModelIndex]
+
+    private fun isModelDownloadedLocally(profile: ParakeetModelProfile): Boolean {
+        return try {
+            val modelDir = File(File(filesDir, "parakeet_models"), profile.archiveFolder)
+            modelDir.exists() && modelDir.isDirectory && (modelDir.listFiles()?.isNotEmpty() == true)
+        } catch (_: Throwable) {
+            false
         }
     }
 
-    /**
-     * Instance #3: NVIDIA Vision NIM for Plant and Animal Camera Identification
-     */
-    fun processCameraFrameForFloraFauna(bitmap: Bitmap, callback: (String) -> Unit) {
-        thread {
-            try {
-                // Convert Android camera frame bitmap to Base64 JPEG string
-                val outputStream = ByteArrayOutputStream()
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
-                val base64Image = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
+    private fun cycleParakeetModel(): String {
+        activeModelIndex = (activeModelIndex + 1) % parakeetModels.size
+        val profile = currentParakeetProfile()
+        val status = if (isModelDownloadedLocally(profile)) "Ready Offline" else "Not Downloaded Yet"
+        return "${profile.displayName} ($status)"
+    }
 
-                val payload = JSONObject().apply {
-                    put("model", "meta/llama-3.2-11b-vision-instruct")
-                    put("messages", arrayOf(
-                        JSONObject().apply {
-                            put("role", "user")
-                            put("content", arrayOf(
-                                JSONObject().apply {
-                                    put("type", "text")
-                                    put("text", "Identify any plants or animals in this image. Provide a brief breakdown including species name, habitat, and safety/toxicity notes.")
-                                },
-                                JSONObject().apply {
-                                    put("type", "image_url")
-                                    put("image_url", JSONObject().apply {
-                                        put("url", "data:image/jpeg;base64,$base64Image")
-                                    })
-                                }
-                            ))
-                        }
-                    ))
-                }
+    private fun updateModelStatusBanner() {
+        val profile = currentParakeetProfile()
+        val stateTag = if (isModelDownloadedLocally(profile)) "LOCAL" else "PENDING DL"
+        suggestionHeader?.text = "[${profile.footprintHint} | $stateTag] LexiQ Engine: Text clear ✅"
+    }
 
-                val response = executeHttpRequest(BASE_URL, payload)
-                val json = JSONObject(response)
-                val analysisText = json.getJSONArray("choices")
-                    .getJSONObject(0)
-                    .getJSONObject("message")
-                    .getString("content")
+    private fun renderKeyboardLayout() {
+        container?.removeAllViews()
 
-                callback(analysisText)
-            } catch (e: Exception) {
-                e.printStackTrace()
-                callback("Vision NIM Telemetry Unavailable")
+        val rows = when (currentMode) {
+            1 -> arrayOf(digitsRow1, digitsRow2, digitsRow3, digitsRow4)
+            2 -> arrayOf(symbolsRow1, symbolsRow2, symbolsRow3, symbolsRow4)
+            else -> arrayOf(keysRow1, keysRow2, keysRow3, keysRow4)
+        }
+
+        for (row in rows) {
+            val rowLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                gravity = Gravity.CENTER
             }
+
+            for (key in row) {
+                val button = Button(this).apply {
+                    text = key
+                    textSize = 16f
+                    transformationMethod = null
+                    minimumWidth = 0
+                    minimumHeight = 0
+                    setPadding(0, 30, 0, 30)
+
+                    val weight = when (key) {
+                        "SPACE" -> 3.0f
+                        "DEL", "ENTER", "123", "ABC", "SYM" -> 1.5f
+                        else -> 1.0f
+                    }
+
+                    layoutParams = LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.WRAP_CONTENT, weight
+                    ).apply {
+                        setMargins(4, 6, 4, 6)
+                    }
+
+                    applyNeonStyle(this, key)
+
+                    setOnClickListener {
+                        handleKeyPress(key)
+                    }
+                }
+                rowLayout.addView(button)
+            }
+            container?.addView(rowLayout)
         }
     }
 
-    private fun executeHttpRequest(urlString: String, jsonBody: JSONObject): String {
-        val url = URL(urlString)
-        val conn = url.openConnection() as HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.setRequestProperty("Content-Type", "application/json")
-        conn.setRequestProperty("Authorization", "Bearer $API_KEY")
-        conn.doOutput = true
+    private fun applyNeonStyle(button: Button, key: String) {
+        val shape = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 8f
 
-        conn.outputStream.use { it.write(jsonBody.toString().toByteArray()) }
+            if (key in listOf("DEL", "ENTER", "SPACE", "123", "ABC", "SYM", "🗿")) {
+                setColor(Color.parseColor("#1C1C1E"))
+                setStroke(2, Color.parseColor("#3A3A3C"))
+                button.setTextColor(Color.WHITE)
+            } else {
+                setColor(Color.parseColor(currentBtnBg))
+                setStroke(3, Color.parseColor("#FFFFFF"))
+                button.setTextColor(Color.parseColor(currentTxtColor))
+            }
+        }
+        button.background = shape
+    }
 
-        return if (conn.responseCode == 200) {
-            conn.inputStream.bufferedReader().use { it.readText() }
+    private fun handleKeyPress(key: String) {
+        val ic: InputConnection = currentInputConnection ?: return
+        when (key) {
+            "DEL" -> {
+                ic.deleteSurroundingText(1, 0)
+                if (wordBuffer.isNotEmpty()) {
+                    wordBuffer.deleteCharAt(wordBuffer.length - 1)
+                }
+            }
+            "SPACE" -> {
+                ic.commitText(" ", 1)
+                wordBuffer.append(" ")
+            }
+            "ENTER" -> {
+                // Pre-post sequence parse: clean spelling, grammar, and anti-troll phrasing before send
+                val parsed = parseBeforePostSequence(wordBuffer.toString())
+                if (parsed.changed && wordBuffer.isNotEmpty()) {
+                    val existingBeforeCursor = ic.getTextBeforeCursor(wordBuffer.length + 16, 0)?.toString() ?: ""
+                    val matchLen = minOf(existingBeforeCursor.length, wordBuffer.length)
+                    if (matchLen > 0) {
+                        ic.deleteSurroundingText(matchLen, 0)
+                    }
+                    ic.commitText(parsed.cleanedText, 1)
+                }
+                ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+                wordBuffer.clear()
+            }
+            "123" -> { currentMode = 1; renderKeyboardLayout(); return }
+            "ABC" -> { currentMode = 0; renderKeyboardLayout(); return }
+            "SYM" -> { currentMode = 2; renderKeyboardLayout(); return }
+            "🗿" -> {
+                val modelStatus = cycleParakeetModel()
+                currentBtnBg = "#00E676"
+                currentTxtColor = "#000000"
+                tikiIcon?.text = "🗿"
+                suggestionHeader?.text = "Parakeet Profile: $modelStatus"
+                suggestionHeader?.setTextColor(Color.parseColor("#00E676"))
+                renderKeyboardLayout()
+                return
+            }
+            else -> {
+                ic.commitText(key, 1)
+                wordBuffer.append(key)
+            }
+        }
+
+        evaluateInputTextStream()
+    }
+
+    private data class ParseResult(
+        val cleanedText: String,
+        val changed: Boolean,
+        val reason: String,
+        val severity: Int // 0 = clean, 1 = spellcheck, 2 = grammar/anti-troll
+    )
+
+    private fun parseBeforePostSequence(raw: String): ParseResult {
+        if (raw.isBlank()) {
+            return ParseResult(raw, false, "Text clear ✅", 0)
+        }
+
+        var working = raw
+        var spellHit: String? = null
+        var grammarHit: String? = null
+        var trollHit = false
+
+        // 1. Offline Spellcheck Pass
+        for ((typo, fixed) in spellCorrections) {
+            val regex = Regex("\\b${Regex.escape(typo)}\\b", RegexOption.IGNORE_CASE)
+            if (regex.containsMatchIn(working)) {
+                working = regex.replace(working) { match ->
+                    preserveCase(match.value, fixed)
+                }
+                if (spellHit == null) {
+                    spellHit = "Spellcheck: '$typo' ➔ '$fixed'"
+                }
+            }
+        }
+
+        // 2. Offline Grammar & Punctuation Pass
+        for ((pattern, replacement) in grammarFixes) {
+            if (pattern.containsMatchIn(working)) {
+                working = pattern.replace(working) { match ->
+                    preserveCase(match.value, replacement)
+                }
+                if (grammarHit == null) {
+                    grammarHit = "Grammar: '${pattern.pattern.replace("\\b", "")}' ➔ '$replacement'"
+                }
+            }
+        }
+
+        // 3. Social Media Anti-Troll Pre-Post Parse
+        for ((trollPattern, calmReplacement) in antiTrollReplacements) {
+            if (trollPattern.containsMatchIn(working)) {
+                working = trollPattern.replace(working, calmReplacement)
+                trollHit = true
+            }
+        }
+
+        // Collapse excessive shout punctuation in social posts
+        val collapsedPunct = working.replace(Regex("!{3,}")) { "!" }.replace(Regex("\\?{3,}")) { "?" }
+        if (collapsedPunct != working) {
+            working = collapsedPunct
+            trollHit = true
+        }
+
+        val changed = working != raw
+        return when {
+            trollHit -> ParseResult(working, changed, "Anti-Troll Parse: Tone smoothed for post", 2)
+            grammarHit != null -> ParseResult(working, changed, "💡 $grammarHit", 2)
+            spellHit != null -> ParseResult(working, changed, "💡 $spellHit", 1)
+            else -> ParseResult(working, false, "LexiQ Engine: Text clear ✅", 0)
+        }
+    }
+
+    private fun preserveCase(source: String, replacement: String): String {
+        return if (source.firstOrNull()?.isUpperCase() == true) {
+            replacement.replaceFirstChar { it.uppercase() }
         } else {
-            "{}"
+            replacement
         }
+    }
+
+    private fun evaluateInputTextStream() {
+        val currentRaw = wordBuffer.toString()
+        val parsed = parseBeforePostSequence(currentRaw)
+
+        when (parsed.severity) {
+            1 -> {
+                // Spellcheck -> Neon Yellow State
+                currentBtnBg = "#FFEB3B"
+                currentTxtColor = "#000000"
+                tikiIcon?.text = "💥"
+                suggestionHeader?.text = parsed.reason
+                suggestionHeader?.setTextColor(Color.parseColor("#FFEB3B"))
+            }
+            2 -> {
+                // Grammar / Anti-Troll -> Neon Red State
+                currentBtnBg = "#FF1744"
+                currentTxtColor = "#FFFFFF"
+                tikiIcon?.text = "❌"
+                suggestionHeader?.text = parsed.reason
+                suggestionHeader?.setTextColor(Color.parseColor("#FF1744"))
+            }
+            else -> {
+                // Clean -> Neon Green State
+                currentBtnBg = "#00E676"
+                currentTxtColor = "#000000"
+                tikiIcon?.text = "🗿"
+                suggestionHeader?.text = "${currentParakeetProfile().displayName}: ${parsed.reason}"
+                suggestionHeader?.setTextColor(Color.parseColor("#00E676"))
+            }
+        }
+
+        renderKeyboardLayout()
     }
 }
