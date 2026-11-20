@@ -8,7 +8,7 @@ class NimTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        
+
         // Update notification shade state
         NimNotificationService.updateShadeNotification(
             this,
