@@ -1,8 +1,13 @@
 package org.linguistic.assistant
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.inputmethodservice.InputMethodService
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
@@ -13,6 +18,8 @@ import android.view.inputmethod.InputConnection
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.ContextCompat
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
@@ -27,15 +34,21 @@ class LexiQKeyboardService : InputMethodService() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val isDownloadingAll = AtomicBoolean(false)
+    private val isRecordingAudio = AtomicBoolean(false)
 
     private var currentMode = 0
     private var activeModelIndex = 0
     private var wordBuffer = StringBuilder()
 
+    // Cached key buttons to avoid rebuilding view hierarchy on every keystroke
+    private val keyButtons = mutableListOf<Pair<String, Button>>()
+
     // Active Parakeet transducer handle (com.k2fsa.sherpa.onnx.OfflineRecognizer when AAR is linked)
     private var activeRecognizerInstance: Any? = null
     private var activeRecognizerModelId: String? = null
     private var loadedTokens: Map<Int, String> = emptyMap()
+    private var audioRecord: AudioRecord? = null
+    private var recordedPcmStream: ByteArrayOutputStream? = null
 
     // Neon State Styling Colors
     private var currentBtnBg = "#00E676" // Neon Green default
@@ -146,6 +159,10 @@ class LexiQKeyboardService : InputMethodService() {
         Regex("\\bstay mad\\b", RegexOption.IGNORE_CASE) to "no need to argue"
     )
 
+    private val spamLinkRegex = Regex("https?://\\S+|www\\.\\S+", RegexOption.IGNORE_CASE)
+    private val repeatedCharRegex = Regex("(.)\\1{3,}")
+    private val repeatedWordRegex = Regex("\\b(\\w+)(\\s+\\1){2,}\\b", RegexOption.IGNORE_CASE)
+
     private val keysRow1 = arrayOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
     private val keysRow2 = arrayOf("a", "s", "d", "f", "g", "h", "j", "k", "l")
     private val keysRow3 = arrayOf("z", "x", "c", "v", "b", "n", "m", "DEL")
@@ -174,6 +191,7 @@ class LexiQKeyboardService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        stopRecordingWithoutTranscribe()
         releaseParakeetRecognizer()
         super.onDestroy()
     }
@@ -221,10 +239,6 @@ class LexiQKeyboardService : InputMethodService() {
 
     private fun downloadedCount(): Int = parakeetModels.count { isModelDownloadedLocally(it) }
 
-    /**
-     * Loads tokens.txt and initializes a sherpa-onnx OfflineRecognizer if present on classpath,
-     * falling back cleanly when native AAR classes are absent.
-     */
     fun initializeParakeetRuntime(profile: ParakeetModelProfile = currentParakeetProfile()): Boolean {
         return try {
             if (activeRecognizerModelId == profile.id && activeRecognizerInstance != null) {
@@ -278,10 +292,119 @@ class LexiQKeyboardService : InputMethodService() {
         }
     }
 
-    /**
-     * Transcribes 16kHz mono PCM float samples via Parakeet when bound,
-     * then commits and evaluates the text through LexiQ spellcheck/grammar/anti-troll.
-     */
+    fun startPushToTalkRecording(maxDurationMs: Long = 5000L): Boolean {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            suggestionHeader?.text = "Parakeet Mic: RECORD_AUDIO permission required"
+            return false
+        }
+        if (!isRecordingAudio.compareAndSet(false, true)) return false
+
+        val sampleRate = currentParakeetProfile().sampleRate
+        val minBuf = AudioRecord.getMinBufferSize(
+            sampleRate,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT
+        )
+        if (minBuf <= 0) {
+            isRecordingAudio.set(false)
+            return false
+        }
+
+        return try {
+            val recorder = AudioRecord(
+                MediaRecorder.AudioSource.MIC,
+                sampleRate,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                minBuf * 2
+            )
+            if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+                recorder.release()
+                isRecordingAudio.set(false)
+                return false
+            }
+
+            val pcmOut = ByteArrayOutputStream()
+            audioRecord = recorder
+            recordedPcmStream = pcmOut
+            recorder.startRecording()
+
+            mainHandler.post {
+                suggestionHeader?.text = "Parakeet Listening (${currentParakeetProfile().displayName})..."
+                suggestionHeader?.setTextColor(Color.parseColor("#FFEB3B"))
+            }
+
+            thread {
+                val readBuf = ByteArray(minBuf)
+                val startTime = System.currentTimeMillis()
+                while (isRecordingAudio.get() && (System.currentTimeMillis() - startTime) < maxDurationMs) {
+                    val read = recorder.read(readBuf, 0, readBuf.size)
+                    if (read > 0) {
+                        pcmOut.write(readBuf, 0, read)
+                    }
+                }
+                if (isRecordingAudio.get()) {
+                    stopAndTranscribeRecording()
+                }
+            }
+            true
+        } catch (_: Throwable) {
+            stopRecordingWithoutTranscribe()
+            false
+        }
+    }
+
+    fun stopAndTranscribeRecording(): String {
+        if (!isRecordingAudio.compareAndSet(true, false)) return ""
+
+        val pcmBytes = try {
+            audioRecord?.stop()
+            audioRecord?.release()
+            recordedPcmStream?.toByteArray() ?: ByteArray(0)
+        } catch (_: Throwable) {
+            ByteArray(0)
+        } finally {
+            audioRecord = null
+            recordedPcmStream = null
+        }
+
+        if (pcmBytes.size < 2) return ""
+
+        val samples = FloatArray(pcmBytes.size / 2)
+        var i = 0
+        var idx = 0
+        while (i + 1 < pcmBytes.size && idx < samples.size) {
+            val low = pcmBytes[i].toInt() and 0xFF
+            val high = pcmBytes[i + 1].toInt()
+            val shortSample = ((high shl 8) or low).toShort().toInt()
+            samples[idx] = (shortSample / 32768.0f).coerceIn(-1.0f, 1.0f)
+            i += 2
+            idx++
+        }
+
+        val text = transcribePcm16kMono(samples, currentParakeetProfile().sampleRate)
+        mainHandler.post {
+            if (text.isBlank()) {
+                updateModelStatusBanner()
+            }
+        }
+        return text
+    }
+
+    private fun stopRecordingWithoutTranscribe() {
+        isRecordingAudio.set(false)
+        try {
+            audioRecord?.stop()
+            audioRecord?.release()
+        } catch (_: Throwable) {
+        } finally {
+            audioRecord = null
+            recordedPcmStream = null
+        }
+    }
+
     fun transcribePcm16kMono(samples: FloatArray, sampleRate: Int = 16000): String {
         val profile = currentParakeetProfile()
         initializeParakeetRuntime(profile)
@@ -289,7 +412,11 @@ class LexiQKeyboardService : InputMethodService() {
         val recognizer = activeRecognizerInstance ?: return ""
         return try {
             val stream = recognizer.javaClass.getMethod("createStream").invoke(recognizer)
-            val acceptMethod = stream.javaClass.getMethod("acceptWaveform", FloatArray::class.java, Int::class.javaPrimitiveType)
+            val acceptMethod = stream.javaClass.getMethod(
+                "acceptWaveform",
+                FloatArray::class.java,
+                Int::class.javaPrimitiveType
+            )
             acceptMethod.invoke(stream, samples, sampleRate)
 
             val decodeMethod = recognizer.javaClass.getMethod("decode", stream.javaClass)
@@ -304,7 +431,7 @@ class LexiQKeyboardService : InputMethodService() {
             }
 
             if (text.isNotBlank()) {
-                commitVoiceTranscript(text)
+                mainHandler.post { commitVoiceTranscript(text) }
             }
             text
         } catch (_: Throwable) {
@@ -312,9 +439,6 @@ class LexiQKeyboardService : InputMethodService() {
         }
     }
 
-    /**
-     * Feeds recognized Parakeet text into the keyboard buffer and runs live LexiQ parsing.
-     */
     fun commitVoiceTranscript(transcript: String) {
         val ic: InputConnection? = currentInputConnection
         ic?.commitText(transcript, 1)
@@ -464,6 +588,7 @@ class LexiQKeyboardService : InputMethodService() {
 
     private fun renderKeyboardLayout() {
         container?.removeAllViews()
+        keyButtons.clear()
 
         val rows = when (currentMode) {
             1 -> arrayOf(digitsRow1, digitsRow2, digitsRow3, digitsRow4)
@@ -508,9 +633,20 @@ class LexiQKeyboardService : InputMethodService() {
                         handleKeyPress(key)
                     }
                 }
+                keyButtons.add(key to button)
                 rowLayout.addView(button)
             }
             container?.addView(rowLayout)
+        }
+    }
+
+    private fun refreshKeyStyles() {
+        if (keyButtons.isEmpty()) {
+            renderKeyboardLayout()
+            return
+        }
+        for ((key, button) in keyButtons) {
+            applyNeonStyle(button, key)
         }
     }
 
@@ -571,7 +707,7 @@ class LexiQKeyboardService : InputMethodService() {
                 tikiIcon?.text = "🗿"
                 suggestionHeader?.text = "Parakeet: $modelStatus"
                 suggestionHeader?.setTextColor(Color.parseColor("#00E676"))
-                renderKeyboardLayout()
+                refreshKeyStyles()
                 return
             }
             else -> {
@@ -587,7 +723,7 @@ class LexiQKeyboardService : InputMethodService() {
         val cleanedText: String,
         val changed: Boolean,
         val reason: String,
-        val severity: Int // 0 = clean, 1 = spellcheck, 2 = grammar/anti-troll
+        val severity: Int // 0 = clean, 1 = spellcheck, 2 = grammar/anti-troll/anti-spam
     )
 
     private fun parseBeforePostSequence(raw: String): ParseResult {
@@ -598,7 +734,7 @@ class LexiQKeyboardService : InputMethodService() {
         var working = raw
         var spellHit: String? = null
         var grammarHit: String? = null
-        var trollHit = false
+        var trollOrSpamHit = false
 
         // 1. Offline Spellcheck Pass
         for ((typo, fixed) in spellCorrections) {
@@ -629,19 +765,42 @@ class LexiQKeyboardService : InputMethodService() {
         for ((trollPattern, calmReplacement) in antiTrollReplacements) {
             if (trollPattern.containsMatchIn(working)) {
                 working = trollPattern.replace(working, calmReplacement)
-                trollHit = true
+                trollOrSpamHit = true
             }
+        }
+
+        // 4. Anti-Spam Pass (URL flood, repeated words/chars, excessive shouting punctuation/caps)
+        if (spamLinkRegex.containsMatchIn(working)) {
+            working = spamLinkRegex.replace(working, "[link-removed]")
+            trollOrSpamHit = true
+        }
+        if (repeatedWordRegex.containsMatchIn(working)) {
+            working = repeatedWordRegex.replace(working) { it.groupValues[1] }
+            trollOrSpamHit = true
+        }
+        if (repeatedCharRegex.containsMatchIn(working)) {
+            working = repeatedCharRegex.replace(working) { "${it.groupValues[1]}${it.groupValues[1]}" }
+            trollOrSpamHit = true
         }
 
         val collapsedPunct = working.replace(Regex("!{3,}")) { "!" }.replace(Regex("\\?{3,}")) { "?" }
         if (collapsedPunct != working) {
             working = collapsedPunct
-            trollHit = true
+            trollOrSpamHit = true
+        }
+
+        val letters = working.filter { it.isLetter() }
+        if (letters.length >= 8) {
+            val upperRatio = letters.count { it.isUpperCase() }.toFloat() / letters.length
+            if (upperRatio > 0.75f) {
+                working = working.lowercase().replaceFirstChar { it.uppercase() }
+                trollOrSpamHit = true
+            }
         }
 
         val changed = working != raw
         return when {
-            trollHit -> ParseResult(working, changed, "Anti-Troll Parse: Tone smoothed for post", 2)
+            trollOrSpamHit -> ParseResult(working, changed, "Anti-Troll & Anti-Spam: Cleaned for post", 2)
             grammarHit != null -> ParseResult(working, changed, "💡 $grammarHit", 2)
             spellHit != null -> ParseResult(working, changed, "💡 $spellHit", 1)
             else -> ParseResult(working, false, "LexiQ Engine: Text clear ✅", 0)
@@ -684,6 +843,6 @@ class LexiQKeyboardService : InputMethodService() {
             }
         }
 
-        renderKeyboardLayout()
+        refreshKeyStyles()
     }
 }
