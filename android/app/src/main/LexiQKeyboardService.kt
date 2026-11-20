@@ -30,6 +30,7 @@ import kotlin.concurrent.thread
 class LexiQKeyboardService : InputMethodService() {
     private var suggestionHeader: TextView? = null
     private var tikiIcon: TextView? = null
+    private var micButton: Button? = null
     private var container: LinearLayout? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -184,10 +185,72 @@ class LexiQKeyboardService : InputMethodService() {
         tikiIcon = layout.findViewById(R.id.tikiIcon)
         container = layout.findViewById(R.id.keyboardContainer)
 
+        setupHeaderMicButton(layout)
         updateModelStatusBanner()
         renderKeyboardLayout()
         downloadAllParakeetModelsAsync()
         return layout
+    }
+
+    private fun setupHeaderMicButton(rootLayout: View) {
+        val existingId = resources.getIdentifier("micButton", "id", packageName)
+        val foundButton = if (existingId != 0) rootLayout.findViewById<Button>(existingId) else null
+
+        val targetButton = foundButton ?: run {
+            val headerParent = suggestionHeader?.parent as? ViewGroup
+            if (headerParent != null) {
+                Button(this).apply {
+                    text = "🎤"
+                    textSize = 15f
+                    transformationMethod = null
+                    minimumWidth = 0
+                    minimumHeight = 0
+                    setPadding(24, 8, 24, 8)
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                    headerParent.addView(this)
+                }
+            } else {
+                null
+            }
+        }
+
+        micButton = targetButton
+        updateMicButtonState(isRecording = false)
+
+        targetButton?.setOnClickListener {
+            togglePushToTalkRecording()
+        }
+    }
+
+    fun togglePushToTalkRecording() {
+        if (isRecordingAudio.get()) {
+            stopAndTranscribeRecording()
+        } else {
+            startPushToTalkRecording()
+        }
+    }
+
+    private fun updateMicButtonState(isRecording: Boolean) {
+        val btn = micButton ?: return
+        val drawable = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 12f
+            if (isRecording) {
+                setColor(Color.parseColor("#FF1744"))
+                setStroke(2, Color.parseColor("#FFFFFF"))
+                btn.setTextColor(Color.WHITE)
+                btn.text = "⏹"
+            } else {
+                setColor(Color.parseColor("#1C1C1E"))
+                setStroke(2, Color.parseColor("#00E676"))
+                btn.setTextColor(Color.parseColor("#00E676"))
+                btn.text = "🎤"
+            }
+        }
+        btn.background = drawable
     }
 
     override fun onDestroy() {
@@ -297,6 +360,8 @@ class LexiQKeyboardService : InputMethodService() {
             != PackageManager.PERMISSION_GRANTED
         ) {
             suggestionHeader?.text = "Parakeet Mic: RECORD_AUDIO permission required"
+            suggestionHeader?.setTextColor(Color.parseColor("#FF1744"))
+            updateMicButtonState(isRecording = false)
             return false
         }
         if (!isRecordingAudio.compareAndSet(false, true)) return false
@@ -309,6 +374,7 @@ class LexiQKeyboardService : InputMethodService() {
         )
         if (minBuf <= 0) {
             isRecordingAudio.set(false)
+            updateMicButtonState(isRecording = false)
             return false
         }
 
@@ -323,6 +389,7 @@ class LexiQKeyboardService : InputMethodService() {
             if (recorder.state != AudioRecord.STATE_INITIALIZED) {
                 recorder.release()
                 isRecordingAudio.set(false)
+                updateMicButtonState(isRecording = false)
                 return false
             }
 
@@ -332,6 +399,7 @@ class LexiQKeyboardService : InputMethodService() {
             recorder.startRecording()
 
             mainHandler.post {
+                updateMicButtonState(isRecording = true)
                 suggestionHeader?.text = "Parakeet Listening (${currentParakeetProfile().displayName})..."
                 suggestionHeader?.setTextColor(Color.parseColor("#FFEB3B"))
             }
@@ -357,7 +425,10 @@ class LexiQKeyboardService : InputMethodService() {
     }
 
     fun stopAndTranscribeRecording(): String {
-        if (!isRecordingAudio.compareAndSet(true, false)) return ""
+        if (!isRecordingAudio.compareAndSet(true, false)) {
+            mainHandler.post { updateMicButtonState(isRecording = false) }
+            return ""
+        }
 
         val pcmBytes = try {
             audioRecord?.stop()
@@ -370,7 +441,13 @@ class LexiQKeyboardService : InputMethodService() {
             recordedPcmStream = null
         }
 
-        if (pcmBytes.size < 2) return ""
+        if (pcmBytes.size < 2) {
+            mainHandler.post {
+                updateMicButtonState(isRecording = false)
+                updateModelStatusBanner()
+            }
+            return ""
+        }
 
         val samples = FloatArray(pcmBytes.size / 2)
         var i = 0
@@ -386,6 +463,7 @@ class LexiQKeyboardService : InputMethodService() {
 
         val text = transcribePcm16kMono(samples, currentParakeetProfile().sampleRate)
         mainHandler.post {
+            updateMicButtonState(isRecording = false)
             if (text.isBlank()) {
                 updateModelStatusBanner()
             }
@@ -403,6 +481,7 @@ class LexiQKeyboardService : InputMethodService() {
             audioRecord = null
             recordedPcmStream = null
         }
+        mainHandler.post { updateMicButtonState(isRecording = false) }
     }
 
     fun transcribePcm16kMono(samples: FloatArray, sampleRate: Int = 16000): String {
