@@ -55,9 +55,13 @@ android {
         }
     }
 
+    androidResources {
+        noCompress += ["onnx", "cql", "txt", "json", "tflite", "bin", "param", "model"]
+    }
+
     packagingOptions {
         resources {
-            noCompress += ["onnx", "cql", "txt", "json", "tflite", "bin", "param", "model"]
+            excludes += ["META-INF/AL2.0", "META-INF/LGPL2.1"]
         }
         jniLibs {
             useLegacyPackaging = true
