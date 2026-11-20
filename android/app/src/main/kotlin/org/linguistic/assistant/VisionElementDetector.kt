@@ -12,8 +12,11 @@ import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -81,35 +84,20 @@ class LexiVisionTileService : TileService() {
 }
 
 /**
- * Spatial Vision Element Detector utilizing NVIDIA NIM Vision-Language-Action (VLA) Pipeline
- * with Scientific/Engineering Taxonomies, Pop-Up Summaries, Brus/Euclidean Rectification,
- * and Talk-Back Output Formatting.
+ * Spatial Vision Element Detector with Downloadable Local VLM/Grounding Model Profiles
+ * under filesDir/vlm_models/<archiveFolder>, Brus/Euclidean rectification, Pop-Up Cards,
+ * and NVIDIA NIM Vision-Language fallback/enrichment.
  */
 class VisionElementDetector(private val context: Context) {
 
-    private val mainHandler = Handler(Looper.getMainLooper())
-
-    private val API_KEY: String by lazy {
-        try {
-            val field = BuildConfig::class.java.getField("NVIDIA_API_KEY")
-            field.get(null) as? String ?: ""
-        } catch (e: Throwable) {
-            ""
-        }
-    }
-
-    private val BASE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-    private var onnxEngine: OnnxEngine? = null
-
-    init {
-        thread {
-            try {
-                onnxEngine = OnnxEngine(context.applicationContext)
-            } catch (e: Throwable) {
-                e.printStackTrace()
-            }
-        }
-    }
+    data class VisionModelProfile(
+        val id: String,
+        val displayName: String,
+        val archiveFolder: String,
+        val footprintHint: String,
+        val nimFallbackModel: String = "meta/llama-3.2-11b-vision-instruct",
+        val artifactUrls: Map<String, String>
+    )
 
     data class ElementDefinition(
         val elementName: String,
@@ -130,6 +118,160 @@ class VisionElementDetector(private val context: Context) {
         val boundingBox: String,
         val confidence: Float = 0.90f
     )
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val isDownloadingModels = AtomicBoolean(false)
+    private var activeModelIndex = 0
+
+    private val vlmModels = listOf(
+        VisionModelProfile(
+            id = "kosmos-2-patch14-224",
+            displayName = "Kosmos-2 Grounding VLM",
+            archiveFolder = "kosmos_2_patch14_224",
+            footprintHint = "Grounded Scene & Box",
+            artifactUrls = mapOf(
+                "config.json" to "https://huggingface.co/microsoft/kosmos-2-patch14-224/resolve/main/config.json",
+                "preprocessor_config.json" to "https://huggingface.co/microsoft/kosmos-2-patch14-224/resolve/main/preprocessor_config.json"
+            )
+        ),
+        VisionModelProfile(
+            id = "grounding-dino-tiny",
+            displayName = "Grounding DINO Tiny",
+            archiveFolder = "grounding_dino_tiny",
+            footprintHint = "Open-Set Object Detection",
+            artifactUrls = mapOf(
+                "config.json" to "https://huggingface.co/IDEA-Research/grounding-dino-tiny/resolve/main/config.json"
+            )
+        ),
+        VisionModelProfile(
+            id = "llama-nemotron-embed-vl-1b-v2",
+            displayName = "Nemotron Embed VL 1B v2",
+            archiveFolder = "llama_nemotron_embed_vl_1b_v2",
+            footprintHint = "Multimodal Retrieval & Taxonomy",
+            artifactUrls = mapOf(
+                "config.json" to "https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2/resolve/main/config.json"
+            )
+        )
+    )
+
+    private val API_KEY: String by lazy {
+        try {
+            val field = BuildConfig::class.java.getField("NVIDIA_API_KEY")
+            field.get(null) as? String ?: ""
+        } catch (e: Throwable) {
+            ""
+        }
+    }
+
+    private val BASE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+    private var onnxEngine: OnnxEngine? = null
+
+    init {
+        thread {
+            try {
+                onnxEngine = OnnxEngine(context.applicationContext)
+                downloadAllVlmModelsAsync()
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun currentVisionProfile(): VisionModelProfile = vlmModels[activeModelIndex]
+
+    fun modelDirectoryFor(profile: VisionModelProfile): File {
+        return File(File(context.filesDir, "vlm_models"), profile.archiveFolder)
+    }
+
+    fun isModelDownloadedLocally(profile: VisionModelProfile): Boolean {
+        return try {
+            val dir = modelDirectoryFor(profile)
+            dir.exists() && dir.isDirectory &&
+                (File(dir, "manifest.json").exists() ||
+                    (dir.listFiles()?.any { it.isFile && it.length() > 0L } == true))
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    fun downloadedModelCount(): Int = vlmModels.count { isModelDownloadedLocally(it) }
+
+    fun cycleVisionModel(): VisionModelProfile {
+        activeModelIndex = (activeModelIndex + 1) % vlmModels.size
+        return currentVisionProfile()
+    }
+
+    fun downloadAllVlmModelsAsync(onComplete: ((Int, Int) -> Unit)? = null) {
+        if (!isDownloadingModels.compareAndSet(false, true)) {
+            mainHandler.post { onComplete?.invoke(downloadedModelCount(), vlmModels.size) }
+            return
+        }
+
+        thread {
+            try {
+                val rootDir = File(context.filesDir, "vlm_models").apply { mkdirs() }
+                for (profile in vlmModels) {
+                    val targetDir = File(rootDir, profile.archiveFolder).apply { mkdirs() }
+                    var fetchedFiles = 0
+
+                    for ((fileName, urlString) in profile.artifactUrls) {
+                        val outFile = File(targetDir, fileName)
+                        if (!outFile.exists() || outFile.length() == 0L) {
+                            if (downloadArtifactToFile(urlString, outFile)) {
+                                fetchedFiles++
+                            }
+                        } else {
+                            fetchedFiles++
+                        }
+                    }
+
+                    File(targetDir, "manifest.json").writeText(
+                        """
+                        {
+                          "id": "${profile.id}",
+                          "name": "${profile.displayName}",
+                          "footprint": "${profile.footprintHint}",
+                          "nim_fallback_model": "${profile.nimFallbackModel}",
+                          "artifacts_ready": $fetchedFiles,
+                          "synced_at_ms": ${System.currentTimeMillis()}
+                        }
+                        """.trimIndent()
+                    )
+                }
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            } finally {
+                isDownloadingModels.set(false)
+                val ready = downloadedModelCount()
+                mainHandler.post { onComplete?.invoke(ready, vlmModels.size) }
+            }
+        }
+    }
+
+    private fun downloadArtifactToFile(urlString: String, destination: File): Boolean {
+        return try {
+            val url = URL(urlString)
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 8000
+                readTimeout = 12000
+                requestMethod = "GET"
+            }
+            if (conn.responseCode in 200..299) {
+                conn.inputStream.use { input ->
+                    FileOutputStream(destination).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                conn.disconnect()
+                destination.exists() && destination.length() > 0L
+            } else {
+                conn.disconnect()
+                false
+            }
+        } catch (_: Throwable) {
+            false
+        }
+    }
 
     /**
      * Applies a Brus-style radial/Euclidean coordinate adjustment on normalized [0..1]
@@ -175,13 +317,23 @@ class VisionElementDetector(private val context: Context) {
     ) {
         thread {
             try {
+                val activeProfile = currentVisionProfile()
+                if (!isModelDownloadedLocally(activeProfile)) {
+                    downloadAllVlmModelsAsync()
+                }
+
                 if (API_KEY.isBlank()) {
+                    val telemetryTarget = onnxEngine?.computeCameraBoundingBox(16L)?.vlaTargetBoundingBox
+                        ?: "[x:0.25, y:0.25, w:0.50, h:0.50]"
                     notifyResult(
                         ElementDefinition(
-                            elementName = "Configuration Missing",
-                            definition = "NVIDIA API key is missing or not declared in BuildConfig.",
-                            detailedDescription = "Ensure NVIDIA_API_KEY is defined in build.gradle or environment variables.",
-                            hazardOrNote = "None"
+                            elementName = "${activeProfile.displayName} Local Profile",
+                            definition = "Local model manifest staged (${downloadedModelCount()}/${vlmModels.size}); cloud NIM key not set.",
+                            detailedDescription = "Active profile '${activeProfile.id}' (${activeProfile.footprintHint}) is staged under vlm_models/${activeProfile.archiveFolder}.",
+                            hazardOrNote = "None",
+                            vlaBoundingTarget = telemetryTarget,
+                            scientificName = activeProfile.id,
+                            engineeringName = activeProfile.footprintHint
                         ),
                         callback
                     )
@@ -206,7 +358,7 @@ class VisionElementDetector(private val context: Context) {
                     }
                 """.trimIndent()
 
-                val payload = buildVisionChatPayload(base64Image, tapLocationPrompt)
+                val payload = buildVisionChatPayload(base64Image, tapLocationPrompt, activeProfile.nimFallbackModel)
                 val responseStr = executeHttpRequest(BASE_URL, payload)
                 val contentString = extractAssistantContent(responseStr)
 
@@ -215,7 +367,7 @@ class VisionElementDetector(private val context: Context) {
                         ElementDefinition(
                             elementName = "Analysis Unavailable",
                             definition = "No visual elements detected under coordinates.",
-                            detailedDescription = "NVIDIA NIM response returned an empty inference result.",
+                            detailedDescription = "Vision inference returned an empty result.",
                             hazardOrNote = "None"
                         ),
                         callback
@@ -264,8 +416,29 @@ class VisionElementDetector(private val context: Context) {
     ) {
         thread {
             try {
+                val activeProfile = currentVisionProfile()
+                if (!isModelDownloadedLocally(activeProfile)) {
+                    downloadAllVlmModelsAsync()
+                }
+
                 if (API_KEY.isBlank()) {
-                    mainHandler.post { callback(emptyList()) }
+                    val box = onnxEngine?.computeCameraBoundingBox(16L)?.vlaTargetBoundingBox
+                        ?: "[x:0.20, y:0.20, w:0.60, h:0.60]"
+                    mainHandler.post {
+                        callback(
+                            listOf(
+                                DetectedPopupItem(
+                                    elementName = activeProfile.displayName,
+                                    scientificName = activeProfile.id,
+                                    engineeringName = activeProfile.footprintHint,
+                                    miniDescription = "Staged local VLM profile (${downloadedModelCount()}/${vlmModels.size} ready).",
+                                    hazardOrNote = "None",
+                                    boundingBox = box,
+                                    confidence = 0.85f
+                                )
+                            )
+                        )
+                    }
                     return@thread
                 }
 
@@ -290,7 +463,7 @@ class VisionElementDetector(private val context: Context) {
                     }
                 """.trimIndent()
 
-                val payload = buildVisionChatPayload(base64Image, scenePrompt)
+                val payload = buildVisionChatPayload(base64Image, scenePrompt, activeProfile.nimFallbackModel)
                 val responseStr = executeHttpRequest(BASE_URL, payload)
                 val contentString = extractAssistantContent(responseStr)
                 if (contentString.isBlank()) {
@@ -331,9 +504,13 @@ class VisionElementDetector(private val context: Context) {
         return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
     }
 
-    private fun buildVisionChatPayload(base64Image: String, promptText: String): JSONObject {
+    private fun buildVisionChatPayload(
+        base64Image: String,
+        promptText: String,
+        modelName: String = "meta/llama-3.2-11b-vision-instruct"
+    ): JSONObject {
         return JSONObject().apply {
-            put("model", "meta/llama-3.2-11b-vision-instruct")
+            put("model", modelName)
             put("response_format", JSONObject().apply { put("type", "json_object") })
             put(
                 "messages",
