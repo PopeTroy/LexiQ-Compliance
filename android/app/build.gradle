@@ -31,7 +31,10 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags += ["-std=c++17", "-fexceptions", "-frtti"]
-                arguments += ["-DUSE_NNAPI=ON"]
+                arguments += [
+                    "-DUSE_NNAPI=ON",
+                    "-DANDROID_STL=c++_shared"
+                ]
             }
         }
 
@@ -80,5 +83,6 @@ flutter {
 
 dependencies {
     implementation "androidx.core:core-ktx:1.13.1"
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.7.0"
     implementation "com.microsoft.onnxruntime:onnxruntime-android:1.19.2"
 }
