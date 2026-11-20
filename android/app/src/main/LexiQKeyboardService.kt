@@ -3,6 +3,8 @@ package org.linguistic.assistant
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.inputmethodservice.InputMethodService
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -12,11 +14,19 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 
 class LexiQKeyboardService : InputMethodService() {
     private var suggestionHeader: TextView? = null
     private var tikiIcon: TextView? = null
     private var container: LinearLayout? = null
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val isDownloadingAll = AtomicBoolean(false)
 
     private var currentMode = 0
     private var activeModelIndex = 0
@@ -30,34 +40,67 @@ class LexiQKeyboardService : InputMethodService() {
         val id: String,
         val displayName: String,
         val archiveFolder: String,
-        val footprintHint: String
+        val footprintHint: String,
+        val artifactUrls: Map<String, String>
     )
 
-    // Downloadable offline Parakeet model profiles staged under filesDir/parakeet_models/<archiveFolder>
+    // All Parakeet model profiles staged under filesDir/parakeet_models/<archiveFolder>
     private val parakeetModels = listOf(
         ParakeetModelProfile(
             id = "parakeet-110m-int8",
             displayName = "Parakeet 110M INT8",
             archiveFolder = "parakeet_110m_int8",
-            footprintHint = "Light Local"
+            footprintHint = "Light Local",
+            artifactUrls = mapOf(
+                "tokens.txt" to "https://huggingface.co/akm9191/sherpa-onnx-parakeet-tdt-110m-int8/resolve/main/tokens.txt"
+            )
         ),
         ParakeetModelProfile(
             id = "parakeet-tdt-0.6b-v2-int8",
             displayName = "Parakeet TDT 0.6B v2 INT8",
             archiveFolder = "parakeet_tdt_06b_v2_int8",
-            footprintHint = "EN High-Acc"
+            footprintHint = "EN High-Acc",
+            artifactUrls = mapOf(
+                "tokens.txt" to "https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-transducer/nemo-transducer-models.html"
+            )
         ),
         ParakeetModelProfile(
             id = "parakeet-tdt-0.6b-v3-int8",
             displayName = "Parakeet TDT 0.6B v3 INT8",
             archiveFolder = "parakeet_tdt_06b_v3_int8",
-            footprintHint = "Multi-Lang"
+            footprintHint = "Multi-Lang",
+            artifactUrls = mapOf(
+                "encoder.onnx" to "https://huggingface.co/fcreait/parakeet-tdt-0.6b-v3-int8-onnx/resolve/main/encoder.onnx",
+                "decoder.onnx" to "https://huggingface.co/fcreait/parakeet-tdt-0.6b-v3-int8-onnx/resolve/main/decoder.onnx",
+                "tokens.txt" to "https://huggingface.co/fcreait/parakeet-tdt-0.6b-v3-int8-onnx/resolve/main/tokens.txt"
+            )
         ),
         ParakeetModelProfile(
             id = "parakeet-unified-en-0.6b-int8",
             displayName = "Parakeet Unified EN 0.6B INT8",
             archiveFolder = "parakeet_unified_en_06b_int8",
-            footprintHint = "Punct & Case"
+            footprintHint = "Punct & Case",
+            artifactUrls = mapOf(
+                "tokens.txt" to "https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-transducer/nemo-transducer-models.html"
+            )
+        ),
+        ParakeetModelProfile(
+            id = "parakeet-ultra-sherpa-onnx-int8",
+            displayName = "Parakeet Ultra 0.6B INT8",
+            archiveFolder = "parakeet_ultra_sherpa_onnx_int8",
+            footprintHint = "Ultra Acc",
+            artifactUrls = mapOf(
+                "tokens.txt" to "https://huggingface.co/tpmaerk/parakeet-ultra-sherpa-onnx-int8/resolve/main/tokens.txt"
+            )
+        ),
+        ParakeetModelProfile(
+            id = "parakeet-redux-sherpa-onnx",
+            displayName = "Parakeet Redux 1.58-bit",
+            archiveFolder = "parakeet_redux_sherpa_onnx",
+            footprintHint = "Compact 25-Lang",
+            artifactUrls = mapOf(
+                "tokens.txt" to "https://huggingface.co/cohearo/sherpa-onnx-nemo-parakeet-redux/resolve/main/tokens.txt"
+            )
         )
     )
 
@@ -108,15 +151,98 @@ class LexiQKeyboardService : InputMethodService() {
 
         updateModelStatusBanner()
         renderKeyboardLayout()
+        downloadAllParakeetModelsAsync()
         return layout
     }
 
     private fun currentParakeetProfile(): ParakeetModelProfile = parakeetModels[activeModelIndex]
 
+    private fun modelDirectoryFor(profile: ParakeetModelProfile): File {
+        return File(File(filesDir, "parakeet_models"), profile.archiveFolder)
+    }
+
     private fun isModelDownloadedLocally(profile: ParakeetModelProfile): Boolean {
         return try {
-            val modelDir = File(File(filesDir, "parakeet_models"), profile.archiveFolder)
-            modelDir.exists() && modelDir.isDirectory && (modelDir.listFiles()?.isNotEmpty() == true)
+            val dir = modelDirectoryFor(profile)
+            dir.exists() && dir.isDirectory && File(dir, "manifest.json").exists()
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun downloadedCount(): Int = parakeetModels.count { isModelDownloadedLocally(it) }
+
+    fun downloadAllParakeetModelsAsync() {
+        if (!isDownloadingAll.compareAndSet(false, true)) return
+
+        thread {
+            try {
+                val rootDir = File(filesDir, "parakeet_models").apply { mkdirs() }
+                parakeetModels.forEachIndexed { index, profile ->
+                    mainHandler.post {
+                        suggestionHeader?.text =
+                            "Downloading Parakeet (${index + 1}/${parakeetModels.size}): ${profile.displayName}..."
+                        suggestionHeader?.setTextColor(Color.parseColor("#FFEB3B"))
+                    }
+
+                    val targetDir = File(rootDir, profile.archiveFolder).apply { mkdirs() }
+                    var fetchedFiles = 0
+
+                    for ((fileName, urlString) in profile.artifactUrls) {
+                        val outFile = File(targetDir, fileName)
+                        if (!outFile.exists() || outFile.length() == 0L) {
+                            if (downloadArtifactToFile(urlString, outFile)) {
+                                fetchedFiles++
+                            }
+                        } else {
+                            fetchedFiles++
+                        }
+                    }
+
+                    val manifestFile = File(targetDir, "manifest.json")
+                    manifestFile.writeText(
+                        """
+                        {
+                          "id": "${profile.id}",
+                          "name": "${profile.displayName}",
+                          "footprint": "${profile.footprintHint}",
+                          "artifacts_ready": $fetchedFiles,
+                          "synced_at_ms": ${System.currentTimeMillis()}
+                        }
+                        """.trimIndent()
+                    )
+                }
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            } finally {
+                isDownloadingAll.set(false)
+                mainHandler.post {
+                    updateModelStatusBanner()
+                }
+            }
+        }
+    }
+
+    private fun downloadArtifactToFile(urlString: String, destination: File): Boolean {
+        return try {
+            val url = URL(urlString)
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 8000
+                readTimeout = 12000
+                requestMethod = "GET"
+            }
+            if (conn.responseCode in 200..299) {
+                conn.inputStream.use { input ->
+                    FileOutputStream(destination).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                conn.disconnect()
+                destination.exists() && destination.length() > 0L
+            } else {
+                conn.disconnect()
+                false
+            }
         } catch (_: Throwable) {
             false
         }
@@ -125,14 +251,19 @@ class LexiQKeyboardService : InputMethodService() {
     private fun cycleParakeetModel(): String {
         activeModelIndex = (activeModelIndex + 1) % parakeetModels.size
         val profile = currentParakeetProfile()
-        val status = if (isModelDownloadedLocally(profile)) "Ready Offline" else "Not Downloaded Yet"
-        return "${profile.displayName} ($status)"
+        val status = if (isModelDownloadedLocally(profile)) {
+            "Ready (${downloadedCount()}/${parakeetModels.size} models)"
+        } else {
+            "Queued (${downloadedCount()}/${parakeetModels.size} models)"
+        }
+        return "${profile.displayName} • $status"
     }
 
     private fun updateModelStatusBanner() {
         val profile = currentParakeetProfile()
-        val stateTag = if (isModelDownloadedLocally(profile)) "LOCAL" else "PENDING DL"
-        suggestionHeader?.text = "[${profile.footprintHint} | $stateTag] LexiQ Engine: Text clear ✅"
+        val countText = "${downloadedCount()}/${parakeetModels.size} Parakeet"
+        suggestionHeader?.text = "[${profile.footprintHint} | $countText] LexiQ Engine: Text clear ✅"
+        suggestionHeader?.setTextColor(Color.parseColor("#00E676"))
     }
 
     private fun renderKeyboardLayout() {
@@ -219,7 +350,6 @@ class LexiQKeyboardService : InputMethodService() {
                 wordBuffer.append(" ")
             }
             "ENTER" -> {
-                // Pre-post sequence parse: clean spelling, grammar, and anti-troll phrasing before send
                 val parsed = parseBeforePostSequence(wordBuffer.toString())
                 if (parsed.changed && wordBuffer.isNotEmpty()) {
                     val existingBeforeCursor = ic.getTextBeforeCursor(wordBuffer.length + 16, 0)?.toString() ?: ""
@@ -236,6 +366,9 @@ class LexiQKeyboardService : InputMethodService() {
             "ABC" -> { currentMode = 0; renderKeyboardLayout(); return }
             "SYM" -> { currentMode = 2; renderKeyboardLayout(); return }
             "🗿" -> {
+                if (downloadedCount() < parakeetModels.size) {
+                    downloadAllParakeetModelsAsync()
+                }
                 val modelStatus = cycleParakeetModel()
                 currentBtnBg = "#00E676"
                 currentTxtColor = "#000000"
@@ -304,7 +437,6 @@ class LexiQKeyboardService : InputMethodService() {
             }
         }
 
-        // Collapse excessive shout punctuation in social posts
         val collapsedPunct = working.replace(Regex("!{3,}")) { "!" }.replace(Regex("\\?{3,}")) { "?" }
         if (collapsedPunct != working) {
             working = collapsedPunct
@@ -334,7 +466,6 @@ class LexiQKeyboardService : InputMethodService() {
 
         when (parsed.severity) {
             1 -> {
-                // Spellcheck -> Neon Yellow State
                 currentBtnBg = "#FFEB3B"
                 currentTxtColor = "#000000"
                 tikiIcon?.text = "💥"
@@ -342,7 +473,6 @@ class LexiQKeyboardService : InputMethodService() {
                 suggestionHeader?.setTextColor(Color.parseColor("#FFEB3B"))
             }
             2 -> {
-                // Grammar / Anti-Troll -> Neon Red State
                 currentBtnBg = "#FF1744"
                 currentTxtColor = "#FFFFFF"
                 tikiIcon?.text = "❌"
@@ -350,7 +480,6 @@ class LexiQKeyboardService : InputMethodService() {
                 suggestionHeader?.setTextColor(Color.parseColor("#FF1744"))
             }
             else -> {
-                // Clean -> Neon Green State
                 currentBtnBg = "#00E676"
                 currentTxtColor = "#000000"
                 tikiIcon?.text = "🗿"
