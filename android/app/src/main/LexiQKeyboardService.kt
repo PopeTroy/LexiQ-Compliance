@@ -41,7 +41,7 @@ class LexiQKeyboardService : InputMethodService() {
     private var activeModelIndex = 0
     private var wordBuffer = StringBuilder()
 
-    // Cached key buttons to avoid rebuilding view hierarchy on every keystroke
+    // Cached key buttons to update neon styles in-place without rebuilding rows every keystroke
     private val keyButtons = mutableListOf<Pair<String, Button>>()
 
     // Active Parakeet transducer handle (com.k2fsa.sherpa.onnx.OfflineRecognizer when AAR is linked)
