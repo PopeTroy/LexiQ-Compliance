@@ -16,9 +16,6 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
-    <!-- Device Administrative Lockout Permissions -->
-    <uses-permission android:name="android.permission.USES_POLICY_FORCE_LOCK" />
-
     <!-- System Notification Shade, Audio & Local Camera Telemetry Permissions -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -29,7 +26,7 @@
     <application
         android:label="LexiQ Compliance"
         android:name="${applicationName}"
-        android:icon="@android:drawable/sym_def_app_icon"
+        android:icon="@mipmap/ic_launcher"
         android:hardwareAccelerated="true">
 
         <!-- Companion Main Execution Screen -->
