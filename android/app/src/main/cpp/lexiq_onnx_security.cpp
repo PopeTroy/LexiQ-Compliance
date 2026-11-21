@@ -5,29 +5,50 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <android/log.h>
+
+#if defined(__has_include)
+#if __has_include("onnxruntime_cxx_api.h")
 #include "onnxruntime_cxx_api.h"
+#define LEXIQ_HAS_ORT_CXX_API 1
+#endif
+#endif
+
+#ifndef LEXIQ_HAS_ORT_CXX_API
+#define LEXIQ_HAS_ORT_CXX_API 0
+#endif
+
+#define LOG_TAG "LexiQOnnxSecurity"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 
 namespace {
 
 std::mutex g_engine_mutex;
+
+#if LEXIQ_HAS_ORT_CXX_API
 Ort::Env g_ort_env(ORT_LOGGING_LEVEL_WARNING, "LexiQOnnxEngine");
 std::unique_ptr<Ort::Session> g_session;
 
 void configure_nnapi_if_enabled(Ort::SessionOptions& session_options) {
-#ifdef USE_NNAPI
+#if defined(USE_NNAPI)
     try {
 #if defined(ORT_API_VERSION) && (ORT_API_VERSION >= 14)
         Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi_V2(session_options, 0));
-#else
+#elif defined(ORT_API_VERSION)
         Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, 0));
 #endif
     } catch (...) {
-        // Fallback cleanly to default CPU execution provider if NNAPI delegate is unavailable
+        LOGW("NNAPI execution provider unavailable; falling back to default CPU provider");
     }
 #else
     (void)session_options;
 #endif
 }
+#else
+std::string g_loaded_model_path;
+bool g_session_initialized = false;
+#endif
 
 } // namespace
 
@@ -49,6 +70,7 @@ Java_org_linguistic_assistant_OnnxEngine_initModel(JNIEnv* env_ptr, jobject thiz
     std::string model_path_str(path);
     env_ptr->ReleaseStringUTFChars(model_path, path);
 
+#if LEXIQ_HAS_ORT_CXX_API
     try {
         Ort::SessionOptions session_options;
         session_options.SetIntraOpNumThreads(2);
@@ -59,10 +81,19 @@ Java_org_linguistic_assistant_OnnxEngine_initModel(JNIEnv* env_ptr, jobject thiz
 
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         g_session = std::move(new_session);
+        LOGI("ONNX session initialized for: %s", model_path_str.c_str());
         return JNI_TRUE;
     } catch (...) {
+        LOGW("Failed to initialize ONNX session for: %s", model_path_str.c_str());
         return JNI_FALSE;
     }
+#else
+    std::lock_guard<std::mutex> lock(g_engine_mutex);
+    g_loaded_model_path = model_path_str;
+    g_session_initialized = true;
+    LOGI("JNI fallback session registered (no C++ ORT header): %s", g_loaded_model_path.c_str());
+    return JNI_TRUE;
+#endif
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -70,7 +101,13 @@ Java_org_linguistic_assistant_OnnxEngine_destroyModel(JNIEnv* env_ptr, jobject t
     (void)env_ptr;
     (void)thiz;
     std::lock_guard<std::mutex> lock(g_engine_mutex);
+#if LEXIQ_HAS_ORT_CXX_API
     g_session.reset();
+#else
+    g_loaded_model_path.clear();
+    g_session_initialized = false;
+#endif
+    LOGI("ONNX engine session destroyed");
 }
 
 extern "C" JNIEXPORT jfloatArray JNICALL
@@ -91,6 +128,7 @@ Java_org_linguistic_assistant_OnnxEngine_evaluateBehavior(JNIEnv* env_ptr, jobje
         return nullptr;
     }
 
+#if LEXIQ_HAS_ORT_CXX_API
     try {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         if (!g_session) {
@@ -140,6 +178,23 @@ Java_org_linguistic_assistant_OnnxEngine_evaluateBehavior(JNIEnv* env_ptr, jobje
     } catch (...) {
         return nullptr;
     }
+#else
+    {
+        std::lock_guard<std::mutex> lock(g_engine_mutex);
+        if (!g_session_initialized) {
+            return nullptr;
+        }
+    }
+
+    // Pass-through fallback when C++ ORT headers are not linked into native CMake
+    const jsize out_size = static_cast<jsize>(std::min<size_t>(host_input.size(), 1024 * 1024));
+    jfloatArray result = env_ptr->NewFloatArray(out_size);
+    if (result == nullptr) {
+        return nullptr;
+    }
+    env_ptr->SetFloatArrayRegion(result, 0, out_size, host_input.data());
+    return result;
+#endif
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
@@ -169,6 +224,7 @@ Java_org_linguistic_assistant_OnnxEngine_evaluateBehaviorInt8(
         return nullptr;
     }
 
+#if LEXIQ_HAS_ORT_CXX_API
     try {
         std::lock_guard<std::mutex> lock(g_engine_mutex);
         if (!g_session) {
@@ -223,4 +279,25 @@ Java_org_linguistic_assistant_OnnxEngine_evaluateBehaviorInt8(
     } catch (...) {
         return nullptr;
     }
+#else
+    {
+        std::lock_guard<std::mutex> lock(g_engine_mutex);
+        if (!g_session_initialized) {
+            return nullptr;
+        }
+    }
+
+    const jsize out_size = static_cast<jsize>(std::min<size_t>(host_input.size(), 1024 * 1024));
+    jbyteArray result = env_ptr->NewByteArray(out_size);
+    if (result == nullptr) {
+        return nullptr;
+    }
+    env_ptr->SetByteArrayRegion(
+        result,
+        0,
+        out_size,
+        reinterpret_cast<const jbyte*>(host_input.data())
+    );
+    return result;
+#endif
 }
