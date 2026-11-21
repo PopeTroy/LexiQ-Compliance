@@ -26,7 +26,7 @@
     <application
         android:label="LexiQ Compliance"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/ic_lexi_vision"
         android:hardwareAccelerated="true">
 
         <!-- Companion Main Execution Screen -->
