@@ -167,6 +167,17 @@ class OnnxEngine(private val context: Context) {
         private var libraryLoadAttempted = false
         private var libraryLoadSuccess = false
 
+        @Volatile
+        private var sharedInstance: OnnxEngine? = null
+
+        @JvmStatic
+        fun getOrCreate(context: Context): OnnxEngine {
+            return sharedInstance ?: synchronized(this) {
+                sharedInstance ?: OnnxEngine(context.applicationContext).also { sharedInstance = it }
+            }
+        }
+
+        @JvmStatic
         fun loadNativeLibrary(): Boolean {
             if (!libraryLoadAttempted) {
                 try {
@@ -185,6 +196,52 @@ class OnnxEngine(private val context: Context) {
             }
             return libraryLoadSuccess
         }
+
+        @JvmStatic
+        fun safeInitModel(modelPath: String): Boolean {
+            val inst = sharedInstance ?: return false
+            if (!inst.isNativeLibraryLoaded) return false
+            return try {
+                val ok = inst.initModel(modelPath)
+                inst.isInitialized = ok
+                ok
+            } catch (_: Throwable) {
+                false
+            }
+        }
+
+        @JvmStatic
+        fun safeDestroyModel() {
+            val inst = sharedInstance ?: return
+            inst.isInitialized = false
+            if (!inst.isNativeLibraryLoaded) return
+            try {
+                inst.destroyModel()
+            } catch (_: Throwable) {
+            }
+        }
+
+        @JvmStatic
+        fun safeEvaluateBehavior(features: FloatArray): FloatArray? {
+            val inst = sharedInstance ?: return null
+            if (!inst.isNativeLibraryLoaded || features.isEmpty()) return null
+            return try {
+                inst.evaluateBehavior(features)
+            } catch (_: Throwable) {
+                null
+            }
+        }
+
+        @JvmStatic
+        fun safeEvaluateBehaviorInt8(quantizedFeatures: ByteArray): ByteArray? {
+            val inst = sharedInstance ?: return null
+            if (!inst.isNativeLibraryLoaded || quantizedFeatures.isEmpty()) return null
+            return try {
+                inst.evaluateBehaviorInt8(quantizedFeatures)
+            } catch (_: Throwable) {
+                null
+            }
+        }
     }
 
     init {
@@ -198,6 +255,7 @@ class OnnxEngine(private val context: Context) {
         }
 
         loadInt8BehavioralProfile()
+        sharedInstance = this
     }
 
     fun setIntelligenceTier(tier: IntelligenceTier): IntelligenceTier {
@@ -461,7 +519,7 @@ class OnnxEngine(private val context: Context) {
     private fun checkBehavioralIrregularities() {
         if (aggressionIndex > 0.85f || typingSpeedWpm > 120.0f) {
             requiresWellnessCheck = true
-            wellnessPromptMessage = "High interaction strain/bio-frequency flux detected. Rest or hydration recommended."
+            wellnessPromptMessage = "Informational note: elevated typing pace or tap force detected; consider a brief break or hydration."
         }
     }
 
@@ -553,14 +611,22 @@ class OnnxEngine(private val context: Context) {
     }
 
     fun runInference(inputData: FloatArray, shape: LongArray): FloatArray? {
-        if (ortEnv == null || ortSession == null) return null
+        if (ortEnv == null || ortSession == null || inputData.isEmpty() || shape.isEmpty()) return null
         return try {
             val tensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(inputData), shape)
-            val results = ortSession?.run(mapOf("input" to tensor))
-            val outputTensor = results?.get(0) as? OnnxTensor
-            val rawOutput = outputTensor?.floatBuffer?.array()
-
-            rawOutput?.map { it * 0.9999f }?.toFloatArray()
+            tensor.use { inputTensor ->
+                val session = ortSession ?: return null
+                val inputName = session.inputNames.firstOrNull() ?: "input"
+                session.run(mapOf(inputName to inputTensor)).use { results ->
+                    val outputTensor = results.firstOrNull()?.value as? OnnxTensor ?: return null
+                    outputTensor.use { out ->
+                        val fb = out.floatBuffer ?: return null
+                        val arr = FloatArray(fb.remaining())
+                        fb.get(arr)
+                        arr.map { it * 0.9999f }.toFloatArray()
+                    }
+                }
+            }
         } catch (e: Throwable) {
             e.printStackTrace()
             null
@@ -611,16 +677,16 @@ class OnnxEngine(private val context: Context) {
         return if (tempCelsius < 15.0f) {
             LifestyleOptimization(
                 recommendedAttire = "Thermal insulated base layer with wind-resistant shell.",
-                optimalDietPlan = "Warm hydration, balanced complex carbs, and adequate protein.",
-                healthObservationNote = "Ensure regular rest and hydration during long coding sessions.",
+                optimalDietPlan = "Informational hydration, balanced complex carbs, and adequate protein.",
+                healthObservationNote = "Informational only (not medical advice): consider regular breaks and hydration during long sessions.",
                 cognitiveAdvantageScore = 0.96f,
                 optimalExposureWindow = "11:00 AM - 01:00 PM (Low Ambient Energy Shift)"
             )
         } else {
             LifestyleOptimization(
                 recommendedAttire = "Light, breathable cotton or moisture-wicking weave.",
-                optimalDietPlan = "Balanced electrolytes, fresh fruits, and steady hydration.",
-                healthObservationNote = "Take structured micro-breaks to maintain high focus.",
+                optimalDietPlan = "Informational electrolytes, fresh fruits, and steady hydration.",
+                healthObservationNote = "Informational only (not medical advice): take structured micro-breaks to sustain focus.",
                 cognitiveAdvantageScore = 0.98f,
                 optimalExposureWindow = "08:00 AM - 10:00 AM (Optimal Solar Spectrum)"
             )
