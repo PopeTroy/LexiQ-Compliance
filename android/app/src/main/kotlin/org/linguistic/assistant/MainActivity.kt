@@ -10,6 +10,8 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        val engine = OnnxEngine.getOrCreate(this)
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "initModel" -> {
@@ -19,7 +21,7 @@ class MainActivity : FlutterActivity() {
                         return@setMethodCallHandler
                     }
                     try {
-                        val ok = OnnxEngine.initModel(modelPath)
+                        val ok = engine.initModel(modelPath)
                         result.success(ok)
                     } catch (e: Throwable) {
                         result.error("INIT_FAILED", e.message, null)
@@ -28,7 +30,7 @@ class MainActivity : FlutterActivity() {
 
                 "destroyModel" -> {
                     try {
-                        OnnxEngine.destroyModel()
+                        engine.destroyModel()
                         result.success(null)
                     } catch (e: Throwable) {
                         result.error("DESTROY_FAILED", e.message, null)
@@ -47,8 +49,8 @@ class MainActivity : FlutterActivity() {
                                 ?: throw IllegalArgumentException("Non-numeric feature at index $idx")
                             item.toFloat()
                         }
-                        val out = OnnxEngine.evaluateBehavior(floats)
-                        result.success(out?.map { it.toDouble() })
+                        val out: FloatArray? = engine.evaluateBehavior(floats)
+                        result.success(out?.map { value -> value.toDouble() })
                     } catch (e: Throwable) {
                         result.error("EVAL_FLOAT_FAILED", e.message, null)
                     }
@@ -61,7 +63,7 @@ class MainActivity : FlutterActivity() {
                         return@setMethodCallHandler
                     }
                     try {
-                        val out = OnnxEngine.evaluateBehaviorInt8(bytes)
+                        val out: ByteArray? = engine.evaluateBehaviorInt8(bytes)
                         result.success(out)
                     } catch (e: Throwable) {
                         result.error("EVAL_INT8_FAILED", e.message, null)
