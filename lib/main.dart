@@ -37,7 +37,7 @@ class LexiQNativeBridge {
 
   Future<bool> initModel(String modelPath) async {
     final bool? ok = await _channel
-        .invokeMethod<bool>('initModel', <String, dynamic>{'modelPath': modelPath})
+        .invokeMethod<bool>('initModel', {'modelPath': modelPath})
         .timeout(const Duration(seconds: 8));
     return ok ?? false;
   }
@@ -50,7 +50,7 @@ class LexiQNativeBridge {
 
   Future<List<double>?> evaluateBehavior(List<double> features) async {
     final List<dynamic>? raw = await _channel
-        .invokeMethod<List<dynamic>>('evaluateBehavior', <String, dynamic>{'features': features})
+        .invokeMethod<List<dynamic>>('evaluateBehavior', {'features': features})
         .timeout(const Duration(seconds: 5));
     if (raw == null) return null;
     return raw.map((dynamic e) => (e as num).toDouble()).toList();
@@ -60,7 +60,7 @@ class LexiQNativeBridge {
     final Uint8List? raw = await _channel
         .invokeMethod<Uint8List>(
           'evaluateBehaviorInt8',
-          <String, dynamic>{'quantizedFeatures': Uint8List.fromList(quantizedFeatures)},
+          {'quantizedFeatures': Uint8List.fromList(quantizedFeatures)},
         )
         .timeout(const Duration(seconds: 5));
     if (raw == null) return null;
@@ -80,17 +80,20 @@ class LexiQNativeBridge {
       request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_kNvidiaApiKey');
 
-      final Map<String, dynamic> payload = <String, dynamic>{
+      final Map<String, dynamic> payload = {
         'model': _kNvidiaModel,
         'temperature': 0.2,
         'max_tokens': 160,
-        'messages': >[
-          <String, String>{
+        'messages': [
+          {
             'role': 'system',
             'content':
                 'You are Lexi-Q. Keep responses concise and informational only (not medical or clinical advice).',
           },
-          <String, String>{'role': 'user', 'content': prompt},
+          {
+            'role': 'user',
+            'content': prompt,
+          },
         ],
       };
 
@@ -201,7 +204,7 @@ class _LexiQDashboardScreenState extends State<LexiQDashboardScreen> {
     });
 
     try {
-      final List<double>? probe = await LexiQNativeBridge.instance.evaluateBehavior(<double>[
+      final List<double>? probe = await LexiQNativeBridge.instance.evaluateBehavior([
         currentTemp,
         0.8,
         0.15,
@@ -269,7 +272,7 @@ class _LexiQDashboardScreenState extends State<LexiQDashboardScreen> {
     });
 
     try {
-      final List<double> features = <double>[
+      final List<double> features = [
         currentTemp,
         currentTemp < 15.0 ? 1.0 : 0.0,
         0.8,
