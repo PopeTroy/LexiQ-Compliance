@@ -5,7 +5,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 
 const String _kNvidiaApiKey = String.fromEnvironment('NVIDIA_API_KEY', defaultValue: '');
 const String _kNvidiaInvokeUrl = String.fromEnvironment(
@@ -25,9 +24,9 @@ class LexiQNativeBridge {
 
   Future<String> prepareAssetModelToDisk(String assetPath) async {
     final ByteData data = await rootBundle.load(assetPath);
-    final Directory supportDir = await getApplicationSupportDirectory();
+    final Directory modelDir = Directory('${Directory.systemTemp.path}/lexiq_onnx_models');
     final String fileName = assetPath.split('/').last;
-    final File outFile = File('${supportDir.path}/$fileName');
+    final File outFile = File('${modelDir.path}/$fileName');
     await outFile.parent.create(recursive: true);
     await outFile.writeAsBytes(
       data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
@@ -241,7 +240,6 @@ class _LexiQDashboardScreenState extends State<LexiQDashboardScreen> {
     });
 
     try {
-      // Adjust asset path if your .onnx model is located elsewhere under assets/
       const String assetCandidate = 'assets/models/lexiq_behavior.onnx';
       final String diskPath = await LexiQNativeBridge.instance.prepareAssetModelToDisk(assetCandidate);
       final bool ok = await LexiQNativeBridge.instance.initModel(diskPath);
@@ -324,7 +322,6 @@ class _LexiQDashboardScreenState extends State<LexiQDashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // PID Controller Status & Runtime Control Card
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
@@ -371,8 +368,6 @@ class _LexiQDashboardScreenState extends State<LexiQDashboardScreen> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // Camera Telemetry & Engine Status Card
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
@@ -404,8 +399,6 @@ class _LexiQDashboardScreenState extends State<LexiQDashboardScreen> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // Weather, Attire & Informational Lifestyle Card
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
