@@ -9,8 +9,14 @@ import ai.onnxruntime.OrtSession
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.FloatBuffer
+import kotlin.math.abs
+import kotlin.math.acos
+import kotlin.math.exp
+import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 /**
  * System Identity Specification:
@@ -740,5 +746,179 @@ class OnnxEngine(private val context: Context) {
         } catch (e: Throwable) {
             e.printStackTrace()
         }
+    }
+}
+
+object HeuristicEngine {
+    const val K_SCALE: Float = 0.666f
+    const val EPS: Float = 1e-6f
+    private const val LN2: Double = 0.6931471805599453
+
+    // --- Geometric & Lp Norms ---
+    fun distance2D(x1: Float, y1: Float, x2: Float, y2: Float): Float =
+        sqrt(((x2 - x1) * (x2 - x1)) + ((y2 - y1) * (y2 - y1)))
+
+    fun distance3D(
+        x1: Float, y1: Float, z1: Float,
+        x2: Float, y2: Float, z2: Float
+    ): Float {
+        val dx = x2 - x1
+        val dy = y2 - y1
+        val dz = z2 - z1
+        return sqrt((dx * dx) + (dy * dy) + (dz * dz))
+    }
+
+    fun manhattanL1(a: FloatArray, b: FloatArray): Float {
+        val n = min(a.size, b.size)
+        var sum = 0.0f
+        for (i in 0 until n) {
+            sum += abs(a[i] - b[i])
+        }
+        return sum
+    }
+
+    fun chebyshevLInf(a: FloatArray, b: FloatArray): Float {
+        val n = min(a.size, b.size)
+        var maxDiff = 0.0f
+        for (i in 0 until n) {
+            maxDiff = max(maxDiff, abs(a[i] - b[i]))
+        }
+        return maxDiff
+    }
+
+    fun minkowskiLp(a: FloatArray, b: FloatArray, p: Float = 3.0f): Float {
+        val safeP = max(1.0f, p).toDouble()
+        val n = min(a.size, b.size)
+        var sum = 0.0
+        for (i in 0 until n) {
+            sum += abs((a[i] - b[i]).toDouble()).pow(safeP)
+        }
+        return sum.pow(1.0 / safeP).toFloat()
+    }
+
+    fun triangleArea2D(
+        x1: Float, y1: Float,
+        x2: Float, y2: Float,
+        x3: Float, y3: Float
+    ): Float = 0.5f * abs((x1 * (y2 - y3)) + (x2 * (y3 - y1)) + (x3 * (y1 - y2)))
+
+    // --- Angular / Cosine Heuristics ---
+    fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
+        val n = min(a.size, b.size)
+        if (n == 0) return 0.0f
+        var dot = 0.0
+        var normA = 0.0
+        var normB = 0.0
+        for (i in 0 until n) {
+            val va = a[i].toDouble()
+            val vb = b[i].toDouble()
+            dot += va * vb
+            normA += va * va
+            normB += vb * vb
+        }
+        val denom = (sqrt(normA) * sqrt(normB)) + EPS
+        return max(-1.0, min(1.0, dot / denom)).toFloat()
+    }
+
+    fun angularDistance(a: FloatArray, b: FloatArray): Float {
+        val cosSim = cosineSimilarity(a, b).toDouble()
+        val clamped = max(-1.0, min(1.0, cosSim))
+        return (acos(clamped) / Math.PI).toFloat()
+    }
+
+    // --- Statistical / Mahalanobis (Diagonal Covariance) ---
+    fun mahalanobisDiagonal(
+        x: FloatArray,
+        mean: FloatArray,
+        variance: FloatArray
+    ): Float {
+        val n = minOf(x.size, mean.size, variance.size)
+        var sumSq = 0.0
+        for (i in 0 until n) {
+            val diff = (x[i] - mean[i]).toDouble()
+            val denom = max(EPS.toDouble(), variance[i].toDouble())
+            sumSq += (diff * diff) / denom
+        }
+        return sqrt(sumSq).toFloat()
+    }
+
+    // --- Information-Theoretic Heuristics (Entropy & KL Divergence) ---
+    fun shannonEntropy(probs: FloatArray): Float {
+        if (probs.isEmpty()) return 0.0f
+        var entropy = 0.0
+        for (p in probs) {
+            val clamped = max(EPS.toDouble(), p.toDouble())
+            entropy -= clamped * (ln(clamped) / LN2)
+        }
+        return max(0.0, entropy).toFloat()
+    }
+
+    fun klDivergence(p: FloatArray, q: FloatArray): Float {
+        val n = min(p.size, q.size)
+        if (n == 0) return 0.0f
+        var kl = 0.0
+        for (i in 0 until n) {
+            val pi = max(EPS.toDouble(), p[i].toDouble())
+            val qi = max(EPS.toDouble(), q[i].toDouble())
+            kl += pi * ln(pi / qi)
+        }
+        return max(0.0, kl).toFloat()
+    }
+
+    // --- Search, Decay, Lyapunov & Softmax Priority ---
+    fun exponentialDecay(distanceOrCost: Float, lambda: Float = 0.5f, k: Float = K_SCALE): Float =
+        max(0.0f, min(1.0f, k * exp((-max(0.0f, lambda) * max(0.0f, distanceOrCost)).toDouble()).toFloat()))
+
+    fun lyapunovPotential(
+        positionError: Float,
+        velocity: Float,
+        stiffness: Float = 1.0f,
+        mass: Float = 1.0f
+    ): Float = 0.5f * ((stiffness * positionError * positionError) + (mass * velocity * velocity))
+
+    fun softmaxWeights(scores: FloatArray, temperature: Float = 1.0f): FloatArray {
+        if (scores.isEmpty()) return FloatArray(0)
+        val temp = max(0.05f, temperature)
+        val maxVal = scores.maxOrNull() ?: 0.0f
+        val exps = DoubleArray(scores.size) { i ->
+            exp(((scores[i] - maxVal) / temp).toDouble())
+        }
+        val sumExp = exps.sum().coerceAtLeast(EPS.toDouble())
+        return FloatArray(scores.size) { i -> (exps[i] / sumExp).toFloat() }
+    }
+
+    fun masterHeuristicScore(
+        state: FloatArray,
+        target: FloatArray,
+        mean: FloatArray,
+        variance: Float,
+        probs: FloatArray,
+        priorProbs: FloatArray,
+        velocity: Float = 0.0f,
+        k: Float = K_SCALE
+    ): Float {
+        val euclid = distance3D(
+            state.getOrElse(0) { 0.0f }, state.getOrElse(1) { 0.0f }, state.getOrElse(2) { 0.0f },
+            target.getOrElse(0) { 0.0f }, target.getOrElse(1) { 0.0f }, target.getOrElse(2) { 0.0f }
+        )
+        val cosSim = cosineSimilarity(state, target)
+        val mahal = mahalanobisDiagonal(state, mean, variance)
+        val ent = shannonEntropy(probs)
+        val kl = klDivergence(probs, priorProbs)
+        val infoGain = 1.0f / (1.0f + kl + ent)
+        val lyapunov = lyapunovPotential(euclid, velocity)
+
+        val wEuclid = exp(-euclid.toDouble()).toFloat()
+        val wCosine = ((cosSim + 1.0f) * 0.5f).coerceIn(0.0f, 1.0f)
+        val wMahal = 1.0f / (1.0f + mahal)
+        val wLyap = 1.0f / (1.0f + lyapunov)
+
+        val composite = (0.25f * wEuclid) +
+            (0.20f * wCosine) +
+            (0.15f * wMahal) +
+            (0.20f * infoGain) +
+            (0.20f * wLyap)
+
+        return max(0.0f, min(1.0f, k * composite))
     }
 }
