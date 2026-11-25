@@ -483,9 +483,18 @@ class OnnxEngine(private val context: Context) {
         val currentCompliance = 0.98f
         val signalPurity = 0.99f
         val safetyFactor = pidController.computeComplianceAdjustment(1.0f, currentCompliance, signalPurity)
+        val heuristicScore = HeuristicEngine.masterHeuristicScore(
+            state = floatArrayOf(currentCompliance, signalPurity, safetyFactor),
+            target = floatArrayOf(1.0f, 1.0f, HeuristicEngine.K_SCALE),
+            mean = floatArrayOf(0.95f, 0.95f, 0.666f),
+            variance = floatArrayOf(0.05f, 0.05f, 0.05f),
+            probs = floatArrayOf(currentCompliance, signalPurity, 1.0f - currentCompliance),
+            priorProbs = floatArrayOf(0.45f, 0.45f, 0.10f),
+            velocity = 0.0f
+        )
 
         val modePrefix = if (currentExecutionMode == ExecutionMode.TACTICAL_SIM) "[TACTICAL SIM]" else "[REAL WORLD]"
-        return "$modePrefix [T${currentIntelligenceTier.level}:${currentIntelligenceTier.label}] [$modelIdentityName Governed: ${(safetyFactor * 100).toInt()}%] $rawResponse"
+        return "$modePrefix [T${currentIntelligenceTier.level}:${currentIntelligenceTier.label}] [$modelIdentityName Governed: ${(safetyFactor * 100).toInt()}% | H:${"%.3f".format(heuristicScore)}] $rawResponse"
     }
 
     /**
@@ -668,10 +677,20 @@ class OnnxEngine(private val context: Context) {
             0.0f
         )
         val embedding = evaluateBehaviorSafe(sampleFeatures)
+        val hScore = HeuristicEngine.masterHeuristicScore(
+            state = sampleFeatures,
+            target = floatArrayOf(16.0f, 16.0f, 0.5f, 0.5f, 0.0f),
+            mean = floatArrayOf(16.0f, 16.0f, 0.5f, 0.5f, 0.0f),
+            variance = floatArrayOf(4.0f, 4.0f, 0.25f, 0.25f, 0.25f),
+            probs = floatArrayOf(0.5f, 0.3f, 0.2f),
+            priorProbs = floatArrayOf(0.34f, 0.33f, 0.33f),
+            velocity = 0.0f
+        )
         val box = if (embedding.size >= 4) {
             "[x:${"%.2f".format(embedding[0])}, y:${"%.2f".format(embedding[1])}, w:${"%.2f".format(embedding[2])}, h:${"%.2f".format(embedding[3])}]"
         } else {
-            "[x:0.25, y:0.25, w:0.50, h:0.50]"
+            val span = (0.25f + (hScore * 0.5f)).coerceIn(0.1f, 0.9f)
+            "[x:0.25, y:0.25, w:${"%.2f".format(span)}, h:${"%.2f".format(span)}]"
         }
         return CameraTelemetry(
             vlaTargetBoundingBox = box,
@@ -891,7 +910,7 @@ object HeuristicEngine {
         state: FloatArray,
         target: FloatArray,
         mean: FloatArray,
-        variance: Float,
+        variance: FloatArray = floatArrayOf(1.0f, 1.0f, 1.0f),
         probs: FloatArray,
         priorProbs: FloatArray,
         velocity: Float = 0.0f,
