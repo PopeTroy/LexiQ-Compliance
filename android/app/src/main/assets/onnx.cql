@@ -1,4 +1,3 @@
-
 # Lexi-Q Quantum Continuum Language (Xeno-IR QCL) Manifest
 # Multi-Family Heuristics Engine, Physics-Aware Rules & PID Control
 [meta]
