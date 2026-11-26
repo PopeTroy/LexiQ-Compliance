@@ -37,6 +37,21 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk
 
+      - name: Cache Gradle, Pub, and Cargo Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.pub-cache
+            ~/.cargo/bin
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git
+          key: ${{ runner.os }}-lexiq-${{ hashFiles('**/*.gradle*', '**/pubspec.lock', '**/Cargo.lock', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-lexiq-
+
       - name: Compile Rust NDK Binaries
         run: |
           # 1. Compile NDK libraries from directory containing Cargo.toml
@@ -72,7 +87,9 @@ jobs:
       - name: Build Android APK with Secret Credentials
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
         run: |
+          set -e
           FLUTTER_DIR=$(find . -name "pubspec.yaml" -exec dirname {} \; | head -n 1)
           if [ -z "$FLUTTER_DIR" ]; then
             echo "ERROR: No pubspec.yaml found in this repository."
@@ -81,8 +98,34 @@ jobs:
           echo "Executing Flutter build inside: $FLUTTER_DIR"
           
           cd "$FLUTTER_DIR"
-          flutter build apk --release \
-            --dart-define=NVIDIA_API_KEY="$NVIDIA_API_KEY"
+
+          MAX_ATTEMPTS=4
+          BACKOFF_SEC=20
+          ATTEMPT=1
+
+          while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+            echo "Flutter release APK build attempt $ATTEMPT of $MAX_ATTEMPTS..."
+            set +e
+            flutter build apk --release \
+              --dart-define=NVIDIA_API_KEY="$NVIDIA_API_KEY" 2>&1 | tee /tmp/flutter_build.log
+            EXIT_CODE=${PIPESTATUS[0]}
+            set -e
+
+            if [ "$EXIT_CODE" -eq 0 ]; then
+              echo "Flutter release APK build succeeded on attempt $ATTEMPT."
+              exit 0
+            fi
+
+            if grep -qE "429|Too Many Requests" /tmp/flutter_build.log && [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+              echo "Detected rate limit (HTTP 429). Backing off for ${BACKOFF_SEC}s before retry..."
+              sleep "$BACKOFF_SEC"
+              BACKOFF_SEC=$((BACKOFF_SEC * 2))
+              ATTEMPT=$((ATTEMPT + 1))
+            else
+              echo "Flutter build failed with exit code $EXIT_CODE."
+              exit "$EXIT_CODE"
+            fi
+          done
 
       # Upload compiled APK as an Actions run artifact
       - name: Upload APK Artifact
