@@ -126,6 +126,14 @@ class SensorNotificationTelemetryService : Service(), SensorEventListener {
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
+    private fun resolveNimApiKey(): String {
+        val prefs = getSharedPreferences("lexiq_nim_config", Context.MODE_PRIVATE)
+        val storedKey = prefs.getString("nvidia_api_key", "") ?: ""
+        if (storedKey.isNotBlank()) return storedKey.trim()
+        if (BuildConfig.NVIDIA_API_KEY.isNotBlank()) return BuildConfig.NVIDIA_API_KEY.trim()
+        return System.getenv("NVIDIA_API_KEY")?.trim() ?: ""
+    }
+
     private fun registerPhoneSensors() {
         val sensors = listOfNotNull(
             sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER),
