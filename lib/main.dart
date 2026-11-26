@@ -87,6 +87,13 @@ class LexiQNativeBridge {
         .timeout(const Duration(seconds: 5));
   }
 
+  Future<String> sendTelemetryCommand(String command) async {
+    final String? res = await _telemetryChannel
+        .invokeMethod<String>('sendCommand', {'command': command})
+        .timeout(const Duration(seconds: 5));
+    return res ?? 'Command dispatched to notification service.';
+  }
+
   Future<String> queryNvidiaNimFallback(String prompt) async {
     if (_kNvidiaApiKey.trim().isEmpty) {
       return 'NIM fallback unavailable: pass --dart-define=NVIDIA_API_KEY=... or load a local ONNX model.';
@@ -192,6 +199,7 @@ class SensorNotificationControllerScreen extends StatefulWidget {
 class _SensorNotificationControllerScreenState
     extends State<SensorNotificationControllerScreen> {
   String _status = 'Starting sensor notification telemetry...';
+  String _activeTier = 'T3';
   bool _running = false;
 
   @override
@@ -208,7 +216,7 @@ class _SensorNotificationControllerScreenState
       if (!mounted) return;
       setState(() {
         _running = true;
-        _status = 'Active in Notification Pane (Accelerometer, Gyro, Mag, Light)';
+        _status = 'Active in Notification Pane (ACC, GYR, MAG, LUX • k=0.666)';
       });
     } catch (e) {
       if (!mounted) return;
@@ -235,6 +243,26 @@ class _SensorNotificationControllerScreenState
     }
   }
 
+  Future<void> _selectTier(String tierCode, String commandText) async {
+    setState(() {
+      _activeTier = tierCode;
+    });
+    try {
+      await LexiQNativeBridge.instance.startSensorTelemetry();
+      final String reply = await LexiQNativeBridge.instance.sendTelemetryCommand(commandText);
+      if (!mounted) return;
+      setState(() {
+        _running = true;
+        _status = reply;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _status = 'Tier [$tierCode] command queued: $e';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -257,9 +285,9 @@ class _SensorNotificationControllerScreenState
                   color: _running ? _kPlumPrimary : _kPurpleDeep,
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Lexi-Q Sensor Telemetry',
-                  style: TextStyle(
+                Text(
+                  'Lexi-Q Sensor Telemetry • $_activeTier',
+                  style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                     color: _kInkDark,
@@ -271,7 +299,32 @@ class _SensorNotificationControllerScreenState
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 13, color: _kInkDark, height: 1.35),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('T1'),
+                      selected: _activeTier == 'T1',
+                      selectedColor: _kPlumPrimary.withValues(alpha: 0.16),
+                      onSelected: (_) => _selectTier('T1', 'tier 1'),
+                    ),
+                    ChoiceChip(
+                      label: const Text('T2'),
+                      selected: _activeTier == 'T2',
+                      selectedColor: _kPlumPrimary.withValues(alpha: 0.16),
+                      onSelected: (_) => _selectTier('T2', 'tier 2'),
+                    ),
+                    ChoiceChip(
+                      label: const Text('T3'),
+                      selected: _activeTier == 'T3',
+                      selectedColor: _kPlumPrimary.withValues(alpha: 0.16),
+                      onSelected: (_) => _selectTier('T3', 'tier 3'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
