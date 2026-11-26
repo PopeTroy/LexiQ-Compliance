@@ -6,7 +6,7 @@ description = "A unified, multi-tier linguistic compliance engine designed to pr
 
 [lib]
 name = "lexiq_compliance"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 
 [dependencies]
