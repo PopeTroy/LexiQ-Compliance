@@ -1,5 +1,5 @@
-use lexiq_compliance::audit::{health_summary, ActiveLevel};
-use lexiq_compliance::sentinel::{ComplianceController, SentinelClone};
+use crate::audit::{health_summary, ActiveLevel};
+use crate::sentinel::{ComplianceController, SentinelClone};
 
 #[tokio::main]
 async fn main() {
