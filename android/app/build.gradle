@@ -1,4 +1,4 @@
-plugins {
+Plugins {
     id "com.android.application"
     id "dev.flutter.flutter-gradle-plugin"
 }
@@ -20,9 +20,14 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
+        def nimApiKey = project.findProperty("NVIDIA_API_KEY")
+            ?: System.getenv("NVIDIA_API_KEY")
+            ?: ""
+
         buildConfigField("boolean", "INFORMATIONAL_ADVISORY_ONLY", "true")
         buildConfigField("String", "COMPLIANCE_MODE", "\"ON_DEVICE_FIRST_HYBRID\"")
         buildConfigField("String", "BUILD_GOVERNANCE_TIER", "\"TIER_0_COSMOGENESIS\"")
+        buildConfigField("String", "NVIDIA_API_KEY", "\"${nimApiKey.toString().replace("\"", "\\\"")}\"")
 
         externalNativeBuild {
             cmake {
