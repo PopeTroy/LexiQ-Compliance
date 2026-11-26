@@ -16,11 +16,19 @@ const String _kNvidiaModel = String.fromEnvironment(
   defaultValue: 'meta/llama-3.1-8b-instruct',
 );
 
+const Color _kPlumPrimary = Color(0xFFD100D1);
+const Color _kPurpleNeon = Color(0xFFBC13FE);
+const Color _kPurpleDeep = Color(0xFF7000FF);
+const Color _kLightBg = Color(0xFFF7F2FF);
+const Color _kInkDark = Color(0xFF1A102B);
+
 class LexiQNativeBridge {
   LexiQNativeBridge._();
   static final LexiQNativeBridge instance = LexiQNativeBridge._();
 
   static const MethodChannel _channel = MethodChannel('org.linguistic.assistant/onnx_engine');
+  static const MethodChannel _telemetryChannel =
+      MethodChannel('org.linguistic.assistant/telemetry_service');
 
   Future<String> prepareAssetModelToDisk(String assetPath) async {
     final ByteData data = await rootBundle.load(assetPath);
@@ -65,6 +73,18 @@ class LexiQNativeBridge {
         .timeout(const Duration(seconds: 5));
     if (raw == null) return null;
     return Int8List.fromList(raw);
+  }
+
+  Future<void> startSensorTelemetry() async {
+    await _telemetryChannel
+        .invokeMethod<void>('startSensorTelemetry')
+        .timeout(const Duration(seconds: 5));
+  }
+
+  Future<void> stopSensorTelemetry() async {
+    await _telemetryChannel
+        .invokeMethod<void>('stopSensorTelemetry')
+        .timeout(const Duration(seconds: 5));
   }
 
   Future<String> queryNvidiaNimFallback(String prompt) async {
@@ -133,10 +153,154 @@ void main() {
       debugPrint('FlutterError: ${details.exceptionAsString()}');
     };
 
-    runApp(const LexiQApp());
+    runApp(const LexiQNotificationServiceApp());
   }, (Object error, StackTrace stackTrace) {
     debugPrint('Uncaught zone error: $error\n$stackTrace');
   });
+}
+
+class LexiQNotificationServiceApp extends StatelessWidget {
+  const LexiQNotificationServiceApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Lexi-Q Sensor Pane',
+      theme: ThemeData(
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: _kLightBg,
+        colorScheme: const ColorScheme.light(
+          primary: _kPlumPrimary,
+          secondary: _kPurpleNeon,
+          surface: Colors.white,
+        ),
+      ),
+      home: const SensorNotificationControllerScreen(),
+    );
+  }
+}
+
+class SensorNotificationControllerScreen extends StatefulWidget {
+  const SensorNotificationControllerScreen({super.key});
+
+  @override
+  State<SensorNotificationControllerScreen> createState() =>
+      _SensorNotificationControllerScreenState();
+}
+
+class _SensorNotificationControllerScreenState
+    extends State<SensorNotificationControllerScreen> {
+  String _status = 'Starting sensor notification telemetry...';
+  bool _running = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startSensorTelemetry();
+    });
+  }
+
+  Future<void> _startSensorTelemetry() async {
+    try {
+      await LexiQNativeBridge.instance.startSensorTelemetry();
+      if (!mounted) return;
+      setState(() {
+        _running = true;
+        _status = 'Active in Notification Pane (Accelerometer, Gyro, Mag, Light)';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _running = false;
+        _status = 'Service trigger: $e';
+      });
+    }
+  }
+
+  Future<void> _stopSensorTelemetry() async {
+    try {
+      await LexiQNativeBridge.instance.stopSensorTelemetry();
+      if (!mounted) return;
+      setState(() {
+        _running = false;
+        _status = 'Sensor notification telemetry stopped.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _status = 'Stop error: $e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: _kPurpleNeon.withValues(alpha: 0.35), width: 1.2),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.notifications_active_rounded,
+                  size: 40,
+                  color: _running ? _kPlumPrimary : _kPurpleDeep,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Lexi-Q Sensor Telemetry',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: _kInkDark,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _status,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 13, color: _kInkDark, height: 1.35),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton(
+                      onPressed: _startSensorTelemetry,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _kPlumPrimary,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Start Pane'),
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton(
+                      onPressed: _stopSensorTelemetry,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _kPurpleDeep,
+                        side: const BorderSide(color: _kPurpleNeon),
+                      ),
+                      child: const Text('Stop Pane'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class LexiQApp extends StatelessWidget {
