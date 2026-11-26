@@ -15,6 +15,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.RemoteInput
 import kotlin.math.sqrt
@@ -35,14 +36,21 @@ class SensorNotificationTelemetryService : Service(), SensorEventListener {
     private val pid = PIDComplianceController()
     private val handler = Handler(Looper.getMainLooper())
 
-    private var accelMag: Float = 9.81f
+    private var accelMag: Float = 9.80665f
     private var gyroNorm: Float = 0.0f
     private var magNorm: Float = 0.0f
     private var luxLevel: Float = 0.0f
+    private var lastLoopMs: Float = 0.0f
+    private var lastTickElapsedMs: Long = 0L
     private var lastCommandResult: String = "Sensors online -> Notification pane active"
 
     private val updateRunnable = object : Runnable {
         override fun run() {
+            val now = SystemClock.elapsedRealtime()
+            if (lastTickElapsedMs > 0L) {
+                lastLoopMs = (now - lastTickElapsedMs).toFloat()
+            }
+            lastTickElapsedMs = now
             publishSensorNotification()
             handler.postDelayed(this, 1500L)
         }
@@ -52,6 +60,7 @@ class SensorNotificationTelemetryService : Service(), SensorEventListener {
         super.onCreate()
         engine = OnnxEngine.getOrCreate(this)
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        lastTickElapsedMs = SystemClock.elapsedRealtime()
         createNotificationChannel()
         registerPhoneSensors()
         startForeground(NOTIFICATION_ID, buildTelemetryNotification())
@@ -60,7 +69,8 @@ class SensorNotificationTelemetryService : Service(), SensorEventListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent != null) {
-            val remoteInputText = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(KEY_QUICK_PROMPT)?.toString()
+            val remoteInputText =
+                RemoteInput.getResultsFromIntent(intent)?.getCharSequence(KEY_QUICK_PROMPT)?.toString()
             val directCmd = intent.getStringExtra(EXTRA_COMMAND_TEXT)
             val cmd = when {
                 !remoteInputText.isNullOrBlank() -> remoteInputText
@@ -71,7 +81,8 @@ class SensorNotificationTelemetryService : Service(), SensorEventListener {
             if (cmd != null) {
                 lastCommandResult = engine.processPromptToCommand(cmd)
             } else if (intent.action == ACTION_REFRESH) {
-                lastCommandResult = "Refreshed from phone sensors (k=${HeuristicEngine.K_SCALE})"
+                lastCommandResult =
+                    "Synced [${engine.currentIntelligenceTier.label}] • k=${HeuristicEngine.K_SCALE}"
             }
         }
         publishSensorNotification()
@@ -147,10 +158,11 @@ class SensorNotificationTelemetryService : Service(), SensorEventListener {
     }
 
     private fun buildTelemetryNotification(): Notification {
+        val tier = engine.currentIntelligenceTier
         val hScore = HeuristicEngine.masterHeuristicScore(
             state = floatArrayOf(accelMag, gyroNorm, magNorm),
-            target = floatArrayOf(9.81f, 0.0f, 45.0f),
-            mean = floatArrayOf(9.81f, 0.1f, 45.0f),
+            target = floatArrayOf(9.80665f, 0.0f, 45.0f),
+            mean = floatArrayOf(9.80665f, 0.1f, 45.0f),
             variance = floatArrayOf(2.0f, 1.0f, 15.0f),
             probs = floatArrayOf(0.5f, 0.3f, 0.2f),
             priorProbs = floatArrayOf(0.34f, 0.33f, 0.33f),
@@ -158,10 +170,10 @@ class SensorNotificationTelemetryService : Service(), SensorEventListener {
         )
         val pidOut = pid.computeComplianceAdjustment(1.0f, 0.98f, 0.99f)
 
-        val telemetryLine =
+        val sensorLine =
             "ACC:${"%.2f".format(accelMag)} m/s² | GYR:${"%.2f".format(gyroNorm)} | MAG:${"%.1f".format(magNorm)}µT | LUX:${"%.0f".format(luxLevel)}"
         val metricLine =
-            "H(k=0.666): ${"%.3f".format(hScore)} • PID: ${"%.2f".format(pidOut)} • ${engine.currentIntelligenceTier.label}"
+            "T${tier.level}:${tier.label} • H(k=0.666):${"%.3f".format(hScore)} • PID:${"%.2f".format(pidOut)} • ${"%.0f".format(lastLoopMs)}ms"
 
         val refreshIntent = Intent(this, SensorNotificationTelemetryService::class.java).apply {
             action = ACTION_REFRESH
@@ -174,7 +186,7 @@ class SensorNotificationTelemetryService : Service(), SensorEventListener {
         )
 
         val remoteInput = RemoteInput.Builder(KEY_QUICK_PROMPT)
-            .setLabel("Command (e.g. tier 2, status, telemetry)")
+            .setLabel("Command (tier 1/2/3, status, telemetry)")
             .build()
 
         val replyIntent = Intent(this, SensorNotificationTelemetryService::class.java).apply {
@@ -194,11 +206,11 @@ class SensorNotificationTelemetryService : Service(), SensorEventListener {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_compass)
-            .setContentTitle("Lexi-Q Sensor Telemetry")
-            .setContentText("$telemetryLine • $metricLine")
+            .setContentTitle("Lexi-Q Sensor Telemetry [T${tier.level}]")
+            .setContentText("$sensorLine • $metricLine")
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText("$telemetryLine\n$metricLine\n$lastCommandResult")
+                    .bigText("$sensorLine\n$metricLine\n$lastCommandResult")
             )
             .setOngoing(true)
             .setOnlyAlertOnce(true)
