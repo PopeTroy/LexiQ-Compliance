@@ -94,6 +94,15 @@ class LexiQNativeBridge {
     return res ?? 'Command dispatched to notification service.';
   }
 
+  Future<void> syncNimApiKey(String apiKey) async {
+    if (apiKey.trim().isEmpty) return;
+    try {
+      await _telemetryChannel
+          .invokeMethod<bool>('setNimApiKey', {'apiKey': apiKey.trim()})
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {}
+  }
+
   Future<String> queryNvidiaNimFallback(String prompt) async {
     if (_kNvidiaApiKey.trim().isEmpty) {
       return 'NIM fallback unavailable: pass --dart-define=NVIDIA_API_KEY=... or load a local ONNX model.';
@@ -205,8 +214,9 @@ class _SensorNotificationControllerScreenState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startSensorTelemetry();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await LexiQNativeBridge.instance.syncNimApiKey(_kNvidiaApiKey);
+      await _startSensorTelemetry();
     });
   }
 
