@@ -1,11 +1,15 @@
 package org.linguistic.assistant
 
+import android.content.Context
+import android.content.Intent
+import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val channelName = "org.linguistic.assistant/onnx_engine"
+    private val telemetryChannelName = "org.linguistic.assistant/telemetry_service"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -73,5 +77,53 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, telemetryChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "startSensorTelemetry" -> {
+                        val intent = Intent(this, SensorNotificationTelemetryService::class.java)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(intent)
+                        } else {
+                            startService(intent)
+                        }
+                        result.success(null)
+                    }
+
+                    "stopSensorTelemetry" -> {
+                        val intent = Intent(this, SensorNotificationTelemetryService::class.java)
+                        stopService(intent)
+                        result.success(null)
+                    }
+
+                    "sendCommand" -> {
+                        val cmd = call.argument<String>("command")?.trim().orEmpty()
+                        val intent = Intent(this, SensorNotificationTelemetryService::class.java).apply {
+                            action = SensorNotificationTelemetryService.ACTION_COMMAND
+                            putExtra(SensorNotificationTelemetryService.EXTRA_COMMAND_TEXT, cmd)
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(intent)
+                        } else {
+                            startService(intent)
+                        }
+                        result.success("Sent to notification service: $cmd")
+                    }
+
+                    "setNimApiKey" -> {
+                        val apiKey = call.argument<String>("apiKey")?.trim().orEmpty()
+                        if (apiKey.isNotEmpty()) {
+                            getSharedPreferences("lexiq_nim_config", Context.MODE_PRIVATE)
+                                .edit()
+                                .putString("nvidia_api_key", apiKey)
+                                .apply()
+                        }
+                        result.success(apiKey.isNotEmpty())
+                    }
+
+                    else -> result.notImplemented()
+                }
+            }
     }
 }
