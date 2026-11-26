@@ -1,56 +1,85 @@
-use serde_json::Value;
+use crate::audit::{ActiveLevel, QuantumSession, SessionAccessState};
+use async_trait::async_trait;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::audit::{ActiveLevel, QuantumSession};
 
-pub struct ComplianceController {
-    pub session: QuantumSession,
+#[derive(Debug, Clone)]
+pub struct EconomicsGuard {
+    pub free_tier_disabled: bool,
+    pub max_cost_units_per_1k_requests: f64,
+    pub accumulated_cost_units: f64,
+    pub request_count: u64,
 }
 
-impl ComplianceController {
-    /// Initializes session with strict 3-day payment fallback logic (T3 direct to T1)
-    pub fn initialize(base_id: &str, level: ActiveLevel, payment_failed_at: Option<u64>) -> Self {
-        let mut resolved_level = level;
-
-        if resolved_level == ActiveLevel::T3 {
-            if let Some(failed_timestamp) = payment_failed_at {
-                let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-                let three_days_seconds = 3 * 24 * 60 * 60; // 72 Hours
-
-                if now > (failed_timestamp + three_days_seconds) {
-                    println!("[ALERT] Billing failure exceeded 3 days! Downgrading T3 direct to T1.");
-                    resolved_level = ActiveLevel::T1; // Hard fallback, completely bypassing T2
-                } else {
-                    println!("[WARNING] T3 payment failed, running in 3-day grace period. T3 features active.");
-                }
-            }
+impl Default for EconomicsGuard {
+    fn default() -> Self {
+        let free_tier_disabled = std::env::var("EMERGENCY_DISABLE_FREE_TIER")
+            .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+            .unwrap_or(false);
+        Self {
+            free_tier_disabled,
+            max_cost_units_per_1k_requests: 6.53,
+            accumulated_cost_units: 0.0,
+            request_count: 0,
         }
-
-        let session = QuantumSession::new(base_id, resolved_level);
-        Self { session }
     }
 }
 
-pub struct SentinelClone {
-    pub id: usize,
-    pub level: ActiveLevel,
+impl EconomicsGuard {
+    pub fn record_and_check(&mut self, tier: ActiveLevel) -> Result<(), &'static str> {
+        if self.free_tier_disabled && tier == ActiveLevel::T1 {
+            return Err("Free tier disabled via emergency_disable_free_tier flag");
+        }
+        self.request_count += 1;
+        let unit_cost = match tier {
+            ActiveLevel::T1 => 0.0,
+            ActiveLevel::T2 => 0.004,
+            ActiveLevel::T3 => 0.008,
+        };
+        self.accumulated_cost_units += unit_cost;
+
+        let batches_of_1k = ((self.request_count as f64) / 1000.0).max(1.0);
+        if self.accumulated_cost_units > (self.max_cost_units_per_1k_requests * batches_of_1k) {
+            return Err("Compute cost ceiling exceeded per 1k requests");
+        }
+        Ok(())
+    }
 }
 
-impl SentinelClone {
-    pub fn spawn(id: usize, level: ActiveLevel) -> Self {
-        Self { id, level }
-    }
+#[async_trait]
+pub trait NlaExecutor: Send + Sync {
+    async fn complete(
+        &self,
+        level: ActiveLevel,
+        payload: &str,
+        groq_key: Option<String>,
+        nim_key: Option<String>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>>;
+}
 
-    /// Non-Linear Agentic execution utilizing Groq and NVIDIA NIM securely based on tier authorization
-    pub async fn execute_nla_task(
-        self,
+pub struct DefaultHttpNlaExecutor {
+    client: reqwest::Client,
+}
+
+impl Default for DefaultHttpNlaExecutor {
+    fn default() -> Self {
+        Self {
+            client: reqwest::Client::new(),
+        }
+    }
+}
+
+#[async_trait]
+impl NlaExecutor for DefaultHttpNlaExecutor {
+    async fn complete(
+        &self,
+        level: ActiveLevel,
         payload: &str,
         groq_key: Option<String>,
         nim_key: Option<String>,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        let client = reqwest::Client::new();
-
-        match self.level {
+        match level {
             ActiveLevel::T1 => {
                 // T1: Zero network usage. Performs clean, instant local fallback processing.
                 let mut local_processed = payload.to_string();
@@ -72,7 +101,7 @@ impl SentinelClone {
                     ]
                 });
 
-                let res = client.post("https://api.groq.com/openai/v1/chat/completions")
+                let res = self.client.post("https://api.groq.com/openai/v1/chat/completions")
                     .headers(headers).json(&body).send().await?;
                 let res_json: Value = res.json().await?;
                 let content = res_json["choices"][0]["message"]["content"]
@@ -94,7 +123,7 @@ impl SentinelClone {
                     ]
                 });
 
-                let res = client.post("https://integrate.api.nvidia.com/v1/chat/completions")
+                let res = self.client.post("https://integrate.api.nvidia.com/v1/chat/completions")
                     .headers(headers).json(&body).send().await?;
                 let res_json: Value = res.json().await?;
                 let content = res_json["choices"][0]["message"]["content"]
@@ -102,5 +131,73 @@ impl SentinelClone {
                 Ok(content)
             }
         }
+    }
+}
+
+pub struct ComplianceController {
+    pub session: QuantumSession,
+}
+
+impl ComplianceController {
+    /// Initializes session with strict 3-day payment fallback logic (T3 direct to T1)
+    pub fn initialize(base_id: &str, level: ActiveLevel, payment_failed_at: Option<u64>) -> Self {
+        let mut resolved_level = level;
+        let mut access_state = SessionAccessState::Active;
+
+        if resolved_level == ActiveLevel::T3 {
+            if let Some(failed_timestamp) = payment_failed_at {
+                let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+                let three_days_seconds = 3 * 24 * 60 * 60; // 72 Hours
+
+                if now > (failed_timestamp + three_days_seconds) {
+                    println!("[ALERT] Billing failure exceeded 3 days! Downgrading T3 direct to T1.");
+                    resolved_level = ActiveLevel::T1; // Hard fallback, completely bypassing T2
+                    access_state = SessionAccessState::DowngradedToT1;
+                } else {
+                    println!("[WARNING] T3 payment failed, running in 3-day grace period. T3 features active.");
+                    access_state = SessionAccessState::GracePeriod;
+                }
+            }
+        }
+
+        let session = QuantumSession::with_state(base_id, resolved_level, access_state, 0.0);
+        Self { session }
+    }
+}
+
+pub struct SentinelClone {
+    pub id: usize,
+    pub level: ActiveLevel,
+    pub economics: EconomicsGuard,
+}
+
+impl SentinelClone {
+    pub fn spawn(id: usize, level: ActiveLevel) -> Self {
+        Self {
+            id,
+            level,
+            economics: EconomicsGuard::default(),
+        }
+    }
+
+    /// Non-Linear Agentic execution utilizing Groq and NVIDIA NIM securely based on tier authorization
+    pub async fn execute_nla_task(
+        mut self,
+        payload: &str,
+        groq_key: Option<String>,
+        nim_key: Option<String>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        self.execute_with_executor(payload, groq_key, nim_key, &DefaultHttpNlaExecutor::default()).await
+    }
+
+    pub async fn execute_with_executor<E: NlaExecutor + ?Sized>(
+        &mut self,
+        payload: &str,
+        groq_key: Option<String>,
+        nim_key: Option<String>,
+        executor: &E,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        self.economics.record_and_check(self.level)?;
+        executor.complete(self.level, payload, groq_key, nim_key).await
     }
 }
